@@ -124,6 +124,7 @@ func main() {
 			// Operations routes
 			protected.POST("/operations", operationsHandler.CreateOperation)
 			protected.GET("/operations", operationsHandler.ListOperations)
+			protected.GET("/operations/stats", operationsHandler.GetOperationStats)
 			protected.GET("/operations/:id", operationsHandler.GetOperation)
 			protected.POST("/operations/:id/cancel", operationsHandler.CancelOperation)
 			

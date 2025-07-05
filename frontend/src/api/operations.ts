@@ -33,9 +33,45 @@ export interface CreateOperationRequest {
   correlation_id?: string;
 }
 
+// Operation list response with pagination
 export interface OperationsListResponse {
   operations: Operation[];
-  count: number;
+  pagination: {
+    page: number;
+    page_size: number;
+    total_count: number;
+    total_pages: number;
+    has_next: boolean;
+    has_prev: boolean;
+  };
+}
+
+// Legacy interface for backward compatibility
+export interface ListOperationsResponse extends OperationsListResponse {}
+export interface ListOperationsParams {
+  status?: Status;
+  type?: OperationType;
+  priority?: Priority;
+  correlation_id?: string;
+  search?: string;
+  start_date?: string;
+  end_date?: string;
+  page?: number;
+  page_size?: number;
+}
+
+// Operation statistics
+export interface OperationStats {
+  by_status: Record<Status, number>;
+  by_type: Record<OperationType, number>;
+  by_priority: Record<Priority, number>;
+  by_hour: Array<{
+    hour: string;
+    count: number;
+  }>;
+  total_count: number;
+  avg_wait_time_seconds: number;
+  avg_process_time_seconds: number;
 }
 
 export interface PipelineMetrics {
@@ -71,14 +107,27 @@ export const operationsApi = {
     return await apiClient.get<Operation>(`/operations/${id}`);
   },
 
-  // List operations with optional filters
+  // List operations with optional filters and pagination
   list: async (params?: {
     status?: Status;
     type?: OperationType;
     priority?: Priority;
     correlation_id?: string;
+    search?: string;
+    start_date?: string;
+    end_date?: string;
+    page?: number;
+    page_size?: number;
   }): Promise<OperationsListResponse> => {
     return await apiClient.get<OperationsListResponse>('/operations', { params });
+  },
+  
+  // Get operation statistics
+  getStats: async (params?: {
+    start_date?: string;
+    end_date?: string;
+  }): Promise<OperationStats> => {
+    return await apiClient.get<OperationStats>('/operations/stats', { params });
   },
 
   // Cancel an operation

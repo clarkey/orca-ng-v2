@@ -5,7 +5,7 @@ import { PrivateRoute } from '@/components/PrivateRoute';
 import { Layout } from '@/components/Layout';
 import { Login } from '@/pages/Login';
 import { Dashboard } from '@/pages/Dashboard';
-import Operations from '@/pages/Operations';
+import Operations from '@/pages/OperationsTable';
 import OperationDetail from '@/pages/OperationDetail';
 import PipelineDashboard from '@/pages/PipelineDashboard';
 

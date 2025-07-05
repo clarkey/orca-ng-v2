@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -93,10 +94,28 @@ func (h *OperationsHandler) GetOperation(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
-// ListOperations lists operations with filtering
+// ListOperations lists operations with filtering and pagination
 func (h *OperationsHandler) ListOperations(c *gin.Context) {
+	// Parse pagination parameters
+	page := 1
+	pageSize := 50
+	if p := c.Query("page"); p != "" {
+		if parsed, err := strconv.Atoi(p); err == nil && parsed > 0 {
+			page = parsed
+		}
+	}
+	if ps := c.Query("page_size"); ps != "" {
+		if parsed, err := strconv.Atoi(ps); err == nil && parsed > 0 && parsed <= 100 {
+			pageSize = parsed
+		}
+	}
+	
+	// Calculate offset
+	offset := (page - 1) * pageSize
+	
 	filters := pipeline.ListOperationsFilters{
-		Limit: 100, // Default limit
+		Limit:  pageSize,
+		Offset: offset,
 	}
 	
 	// Parse query parameters
@@ -119,12 +138,49 @@ func (h *OperationsHandler) ListOperations(c *gin.Context) {
 		filters.CorrelationID = &correlationID
 	}
 	
-	// List operations
+	// Parse search query
+	if search := c.Query("search"); search != "" {
+		filters.Search = &search
+	}
+	
+	// Parse date range
+	if startDate := c.Query("start_date"); startDate != "" {
+		if t, err := time.Parse(time.RFC3339, startDate); err == nil {
+			filters.StartDate = &t
+		}
+	}
+	
+	if endDate := c.Query("end_date"); endDate != "" {
+		if t, err := time.Parse(time.RFC3339, endDate); err == nil {
+			filters.EndDate = &t
+		}
+	}
+	
+	// Parse sorting
+	if sortBy := c.Query("sort_by"); sortBy != "" {
+		filters.SortBy = &sortBy
+	}
+	
+	if sortOrder := c.Query("sort_order"); sortOrder != "" {
+		filters.SortOrder = &sortOrder
+	}
+	
+	// Get operations
 	operations, err := h.store.ListOperations(c.Request.Context(), filters)
 	if err != nil {
 		h.logger.WithError(err).Error("Failed to list operations")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list operations"})
 		return
+	}
+	
+	// Get total count
+	countFilters := filters
+	countFilters.Limit = 0  // Remove limit for count
+	countFilters.Offset = 0
+	totalCount, err := h.store.CountOperations(c.Request.Context(), countFilters)
+	if err != nil {
+		h.logger.WithError(err).Error("Failed to count operations")
+		totalCount = len(operations) // Fallback
 	}
 	
 	// Convert to responses
@@ -133,9 +189,19 @@ func (h *OperationsHandler) ListOperations(c *gin.Context) {
 		responses[i] = h.operationToResponse(op)
 	}
 	
+	// Calculate pagination metadata
+	totalPages := (totalCount + pageSize - 1) / pageSize
+	
 	c.JSON(http.StatusOK, gin.H{
 		"operations": responses,
-		"count":      len(responses),
+		"pagination": gin.H{
+			"page":        page,
+			"page_size":   pageSize,
+			"total_count": totalCount,
+			"total_pages": totalPages,
+			"has_next":    page < totalPages,
+			"has_prev":    page > 1,
+		},
 	})
 }
 
@@ -206,6 +272,32 @@ func (h *OperationsHandler) GetPipelineConfig(c *gin.Context) {
 	}
 	
 	c.JSON(http.StatusOK, config)
+}
+
+// GetOperationStats returns aggregated statistics about operations
+func (h *OperationsHandler) GetOperationStats(c *gin.Context) {
+	// Parse query parameters for time range
+	var startDate, endDate *time.Time
+	if start := c.Query("start_date"); start != "" {
+		if t, err := time.Parse(time.RFC3339, start); err == nil {
+			startDate = &t
+		}
+	}
+	if end := c.Query("end_date"); end != "" {
+		if t, err := time.Parse(time.RFC3339, end); err == nil {
+			endDate = &t
+		}
+	}
+	
+	// Get operation statistics
+	stats, err := h.store.GetOperationStats(c.Request.Context(), startDate, endDate)
+	if err != nil {
+		h.logger.WithError(err).Error("Failed to get operation stats")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get operation statistics"})
+		return
+	}
+	
+	c.JSON(http.StatusOK, stats)
 }
 
 // UpdatePipelineConfig updates pipeline configuration

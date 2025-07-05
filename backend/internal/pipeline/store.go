@@ -142,6 +142,38 @@ func (s *Store) ListOperations(ctx context.Context, filters ListOperationsFilter
 		args = append(args, *filters.CorrelationID)
 	}
 	
+	// Search filter - uses full-text search with fallback to fuzzy matching
+	if filters.Search != nil && *filters.Search != "" {
+		argCount++
+		searchArg := argCount
+		argCount++
+		fuzzyArg := argCount
+		
+		// Use full-text search with tsquery and fallback to fuzzy matching
+		query += fmt.Sprintf(` AND (
+			search_vector @@ plainto_tsquery('english', $%d) 
+			OR id ILIKE $%d 
+			OR type::text ILIKE $%d
+		)`, searchArg, fuzzyArg, fuzzyArg)
+		
+		fuzzyPattern := "%" + *filters.Search + "%"
+		args = append(args, *filters.Search, fuzzyPattern)
+	}
+	
+	// Date range filters
+	if filters.StartDate != nil {
+		argCount++
+		query += fmt.Sprintf(" AND created_at >= $%d", argCount)
+		args = append(args, *filters.StartDate)
+	}
+	
+	if filters.EndDate != nil {
+		argCount++
+		query += fmt.Sprintf(" AND created_at <= $%d", argCount)
+		args = append(args, *filters.EndDate)
+	}
+	
+	// Legacy date filters
 	if filters.CreatedAfter != nil {
 		argCount++
 		query += fmt.Sprintf(" AND created_at >= $%d", argCount)
@@ -155,13 +187,40 @@ func (s *Store) ListOperations(ctx context.Context, filters ListOperationsFilter
 	}
 	
 	// Add ordering
-	query += " ORDER BY created_at DESC"
+	if filters.SortBy != nil && filters.SortOrder != nil {
+		// Validate sort column to prevent SQL injection
+		validColumns := map[string]bool{
+			"id":         true,
+			"type":       true,
+			"priority":   true,
+			"status":     true,
+			"created_at": true,
+		}
+		
+		if validColumns[*filters.SortBy] {
+			order := "ASC"
+			if *filters.SortOrder == "desc" {
+				order = "DESC"
+			}
+			query += fmt.Sprintf(" ORDER BY %s %s", *filters.SortBy, order)
+		} else {
+			query += " ORDER BY created_at DESC"
+		}
+	} else {
+		query += " ORDER BY created_at DESC"
+	}
 	
-	// Add limit
+	// Add limit and offset for pagination
 	if filters.Limit > 0 {
 		argCount++
 		query += fmt.Sprintf(" LIMIT $%d", argCount)
 		args = append(args, filters.Limit)
+	}
+	
+	if filters.Offset > 0 {
+		argCount++
+		query += fmt.Sprintf(" OFFSET $%d", argCount)
+		args = append(args, filters.Offset)
 	}
 	
 	// Execute query
@@ -187,6 +246,248 @@ func (s *Store) ListOperations(ctx context.Context, filters ListOperationsFilter
 	}
 	
 	return operations, nil
+}
+
+// CountOperations counts operations matching the given filters
+func (s *Store) CountOperations(ctx context.Context, filters ListOperationsFilters) (int, error) {
+	query := `SELECT COUNT(*) FROM operations WHERE 1=1`
+	
+	args := []interface{}{}
+	argCount := 0
+	
+	// Build dynamic query based on filters (same as ListOperations but without LIMIT/OFFSET)
+	if filters.Status != nil {
+		argCount++
+		query += fmt.Sprintf(" AND status = $%d", argCount)
+		args = append(args, *filters.Status)
+	}
+	
+	if filters.Type != nil {
+		argCount++
+		query += fmt.Sprintf(" AND type = $%d", argCount)
+		args = append(args, *filters.Type)
+	}
+	
+	if filters.Priority != nil {
+		argCount++
+		query += fmt.Sprintf(" AND priority = $%d", argCount)
+		args = append(args, *filters.Priority)
+	}
+	
+	if filters.CreatedBy != nil {
+		argCount++
+		query += fmt.Sprintf(" AND created_by = $%d", argCount)
+		args = append(args, *filters.CreatedBy)
+	}
+	
+	if filters.CorrelationID != nil {
+		argCount++
+		query += fmt.Sprintf(" AND correlation_id = $%d", argCount)
+		args = append(args, *filters.CorrelationID)
+	}
+	
+	// Search filter
+	if filters.Search != nil && *filters.Search != "" {
+		argCount++
+		searchArg := argCount
+		argCount++
+		fuzzyArg := argCount
+		
+		// Use full-text search with tsquery and fallback to fuzzy matching
+		query += fmt.Sprintf(` AND (
+			search_vector @@ plainto_tsquery('english', $%d) 
+			OR id ILIKE $%d 
+			OR type::text ILIKE $%d
+		)`, searchArg, fuzzyArg, fuzzyArg)
+		
+		fuzzyPattern := "%" + *filters.Search + "%"
+		args = append(args, *filters.Search, fuzzyPattern)
+	}
+	
+	// Date range filters
+	if filters.StartDate != nil {
+		argCount++
+		query += fmt.Sprintf(" AND created_at >= $%d", argCount)
+		args = append(args, *filters.StartDate)
+	}
+	
+	if filters.EndDate != nil {
+		argCount++
+		query += fmt.Sprintf(" AND created_at <= $%d", argCount)
+		args = append(args, *filters.EndDate)
+	}
+	
+	var count int
+	err := s.db.QueryRowContext(ctx, query, args...).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count operations: %w", err)
+	}
+	
+	return count, nil
+}
+
+// OperationStats represents aggregated operation statistics
+type OperationStats struct {
+	ByStatus       map[Status]int        `json:"by_status"`
+	ByType         map[OperationType]int `json:"by_type"`
+	ByPriority     map[Priority]int      `json:"by_priority"`
+	ByHour         []HourlyStats         `json:"by_hour"`
+	TotalCount     int                   `json:"total_count"`
+	AvgWaitTime    float64               `json:"avg_wait_time_seconds"`
+	AvgProcessTime float64               `json:"avg_process_time_seconds"`
+}
+
+// HourlyStats represents operations count by hour
+type HourlyStats struct {
+	Hour  time.Time `json:"hour"`
+	Count int       `json:"count"`
+}
+
+// GetOperationStats returns aggregated statistics for operations
+func (s *Store) GetOperationStats(ctx context.Context, startDate, endDate *time.Time) (*OperationStats, error) {
+	stats := &OperationStats{
+		ByStatus:   make(map[Status]int),
+		ByType:     make(map[OperationType]int),
+		ByPriority: make(map[Priority]int),
+		ByHour:     []HourlyStats{},
+	}
+	
+	// Base query conditions
+	whereClause := "1=1"
+	args := []interface{}{}
+	argCount := 0
+	
+	if startDate != nil {
+		argCount++
+		whereClause += fmt.Sprintf(" AND created_at >= $%d", argCount)
+		args = append(args, *startDate)
+	}
+	
+	if endDate != nil {
+		argCount++
+		whereClause += fmt.Sprintf(" AND created_at <= $%d", argCount)
+		args = append(args, *endDate)
+	}
+	
+	// Get counts by status
+	query := fmt.Sprintf(`
+		SELECT status, COUNT(*) as count
+		FROM operations
+		WHERE %s
+		GROUP BY status
+	`, whereClause)
+	
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query status stats: %w", err)
+	}
+	defer rows.Close()
+	
+	for rows.Next() {
+		var status Status
+		var count int
+		if err := rows.Scan(&status, &count); err != nil {
+			return nil, fmt.Errorf("scan status stats: %w", err)
+		}
+		stats.ByStatus[status] = count
+		stats.TotalCount += count
+	}
+	
+	// Get counts by type
+	query = fmt.Sprintf(`
+		SELECT type, COUNT(*) as count
+		FROM operations
+		WHERE %s
+		GROUP BY type
+	`, whereClause)
+	
+	rows, err = s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query type stats: %w", err)
+	}
+	defer rows.Close()
+	
+	for rows.Next() {
+		var opType OperationType
+		var count int
+		if err := rows.Scan(&opType, &count); err != nil {
+			return nil, fmt.Errorf("scan type stats: %w", err)
+		}
+		stats.ByType[opType] = count
+	}
+	
+	// Get counts by priority
+	query = fmt.Sprintf(`
+		SELECT priority, COUNT(*) as count
+		FROM operations
+		WHERE %s
+		GROUP BY priority
+	`, whereClause)
+	
+	rows, err = s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query priority stats: %w", err)
+	}
+	defer rows.Close()
+	
+	for rows.Next() {
+		var priority Priority
+		var count int
+		if err := rows.Scan(&priority, &count); err != nil {
+			return nil, fmt.Errorf("scan priority stats: %w", err)
+		}
+		stats.ByPriority[priority] = count
+	}
+	
+	// Get hourly distribution for the last 24 hours
+	query = fmt.Sprintf(`
+		SELECT 
+			date_trunc('hour', created_at) as hour,
+			COUNT(*) as count
+		FROM operations
+		WHERE %s
+		GROUP BY hour
+		ORDER BY hour DESC
+		LIMIT 24
+	`, whereClause)
+	
+	rows, err = s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query hourly stats: %w", err)
+	}
+	defer rows.Close()
+	
+	for rows.Next() {
+		var hourStat HourlyStats
+		if err := rows.Scan(&hourStat.Hour, &hourStat.Count); err != nil {
+			return nil, fmt.Errorf("scan hourly stats: %w", err)
+		}
+		stats.ByHour = append(stats.ByHour, hourStat)
+	}
+	
+	// Get average times
+	query = fmt.Sprintf(`
+		SELECT 
+			AVG(EXTRACT(EPOCH FROM (COALESCE(started_at, NOW()) - created_at))) as avg_wait_time,
+			AVG(EXTRACT(EPOCH FROM (completed_at - started_at))) as avg_process_time
+		FROM operations
+		WHERE %s AND started_at IS NOT NULL
+	`, whereClause)
+	
+	var avgWait, avgProcess *float64
+	err = s.db.QueryRowContext(ctx, query, args...).Scan(&avgWait, &avgProcess)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, fmt.Errorf("query avg times: %w", err)
+	}
+	
+	if avgWait != nil {
+		stats.AvgWaitTime = *avgWait
+	}
+	if avgProcess != nil {
+		stats.AvgProcessTime = *avgProcess
+	}
+	
+	return stats, nil
 }
 
 // WaitForOperation waits for an operation to complete or timeout
@@ -339,7 +640,13 @@ type ListOperationsFilters struct {
 	Priority      *Priority
 	CreatedBy     *string
 	CorrelationID *string
+	Search        *string
+	StartDate     *time.Time
+	EndDate       *time.Time
 	CreatedAfter  *time.Time
 	CreatedBefore *time.Time
+	SortBy        *string
+	SortOrder     *string
 	Limit         int
+	Offset        int
 }
