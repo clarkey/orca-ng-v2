@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -16,13 +17,15 @@ import (
 // OperationsHandler handles operation-related API endpoints
 type OperationsHandler struct {
 	store  *pipeline.Store
+	db     *sql.DB
 	logger *logrus.Logger
 }
 
 // NewOperationsHandler creates a new operations handler
-func NewOperationsHandler(store *pipeline.Store, logger *logrus.Logger) *OperationsHandler {
+func NewOperationsHandler(store *pipeline.Store, db *sql.DB, logger *logrus.Logger) *OperationsHandler {
 	return &OperationsHandler{
 		store:  store,
+		db:     db,
 		logger: logger,
 	}
 }
@@ -383,11 +386,26 @@ func (h *OperationsHandler) operationToResponse(op *pipeline.Operation) pipeline
 		ErrorMessage: op.ErrorMessage,
 		CreatedAt:    op.CreatedAt,
 		CompletedAt:  op.CompletedAt,
+		CreatedBy:    op.CreatedBy,
 	}
 	
 	// Dereference Result if not nil
 	if op.Result != nil {
 		resp.Result = *op.Result
+	}
+	
+	// Fetch user info if created_by is set
+	if op.CreatedBy != nil && *op.CreatedBy != "" {
+		var username string
+		err := h.db.QueryRow("SELECT username FROM users WHERE id = $1", *op.CreatedBy).Scan(&username)
+		if err == nil {
+			resp.CreatedByUser = &pipeline.UserInfo{
+				ID:       *op.CreatedBy,
+				Username: username,
+			}
+		} else {
+			h.logger.WithError(err).Warn("Failed to fetch user info for operation")
+		}
 	}
 	
 	return resp

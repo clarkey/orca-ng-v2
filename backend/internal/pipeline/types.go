@@ -131,4 +131,12 @@ type OperationResponse struct {
 	ErrorMessage *string         `json:"error_message,omitempty"`
 	CreatedAt    time.Time       `json:"created_at"`
 	CompletedAt  *time.Time      `json:"completed_at,omitempty"`
+	CreatedBy    *string         `json:"created_by,omitempty"`
+	CreatedByUser *UserInfo      `json:"created_by_user,omitempty"`
+}
+
+// UserInfo represents basic user information for API responses
+type UserInfo struct {
+	ID       string `json:"id"`
+	Username string `json:"username"`
 }

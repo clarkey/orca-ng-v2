@@ -105,7 +105,7 @@ func main() {
 	
 	// Initialize handlers
 	authHandler := handlers.NewAuthHandler(db, sessionTimeout)
-	operationsHandler := handlers.NewOperationsHandler(pipelineStore, logrus.StandardLogger())
+	operationsHandler := handlers.NewOperationsHandler(pipelineStore, db.SqlDB(), logrus.StandardLogger())
 
 	// API routes
 	api := router.Group("/api")

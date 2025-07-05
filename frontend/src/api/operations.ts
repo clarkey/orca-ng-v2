@@ -12,6 +12,11 @@ export type OperationType =
   | 'safe_sync'
   | 'group_sync';
 
+export interface UserInfo {
+  id: string;
+  username: string;
+}
+
 export interface Operation {
   id: string;
   type: OperationType;
@@ -21,6 +26,8 @@ export interface Operation {
   error_message?: string;
   created_at: string;
   completed_at?: string;
+  created_by?: string;
+  created_by_user?: UserInfo;
 }
 
 export interface CreateOperationRequest {

@@ -219,67 +219,32 @@ export default function OperationsTable() {
         size: 40,
       },
       {
-        accessorKey: 'id',
-        header: ({ column }) => {
-          return (
-            <Button
-              variant="ghost"
-              onClick={() => {
-                const isSorted = column.getIsSorted();
-                if (isSorted === false) {
-                  column.toggleSorting(false); // Set to ascending
-                } else if (isSorted === "asc") {
-                  column.toggleSorting(true); // Set to descending
-                } else {
-                  column.clearSorting(); // Clear sorting
-                }
-              }}
-              className="h-auto p-0 font-medium hover:bg-transparent"
-            >
-              ID
-              {column.getIsSorted() === "asc" && <ChevronUp className="ml-2 h-4 w-4" />}
-              {column.getIsSorted() === "desc" && <ChevronDown className="ml-2 h-4 w-4" />}
-            </Button>
-          )
-        },
-        size: 150,
-        cell: ({ row }) => (
-          <div className="font-mono text-xs">{row.original.id}</div>
-        ),
-      },
-      {
         accessorKey: 'status',
-        header: ({ column }) => {
+        header: '',
+        size: 20,
+        cell: ({ row }) => {
+          const statusDotColors: Record<Status, string> = {
+            pending: 'bg-gray-400',
+            processing: 'bg-blue-500 animate-pulse',
+            completed: 'bg-green-500',
+            failed: 'bg-red-500',
+            cancelled: 'bg-orange-500',
+          };
+          
+          const statusTooltips: Record<Status, string> = {
+            pending: 'Pending',
+            processing: 'Processing',
+            completed: 'Completed',
+            failed: 'Failed',
+            cancelled: 'Cancelled',
+          };
+          
           return (
-            <Button
-              variant="ghost"
-              onClick={() => {
-                const isSorted = column.getIsSorted();
-                if (isSorted === false) {
-                  column.toggleSorting(false); // Set to ascending
-                } else if (isSorted === "asc") {
-                  column.toggleSorting(true); // Set to descending
-                } else {
-                  column.clearSorting(); // Clear sorting
-                }
-              }}
-              className="h-auto p-0 font-medium hover:bg-transparent"
-            >
-              Status
-              {column.getIsSorted() === "asc" && <ChevronUp className="ml-2 h-4 w-4" />}
-              {column.getIsSorted() === "desc" && <ChevronDown className="ml-2 h-4 w-4" />}
-            </Button>
-          )
+            <div className="flex items-center justify-center" title={statusTooltips[row.original.status]}>
+              <span className={`w-2 h-2 rounded-full ${statusDotColors[row.original.status]}`} />
+            </div>
+          );
         },
-        size: 120,
-        cell: ({ row }) => (
-          <div className="flex items-center gap-2">
-            {getStatusIcon(row.original.status)}
-            <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(row.original.status)}`}>
-              {row.original.status}
-            </span>
-          </div>
-        ),
       },
       {
         accessorKey: 'type',
@@ -299,14 +264,98 @@ export default function OperationsTable() {
               }}
               className="h-auto p-0 font-medium hover:bg-transparent"
             >
-              Type
+              Type / ID
               {column.getIsSorted() === "asc" && <ChevronUp className="ml-2 h-4 w-4" />}
               {column.getIsSorted() === "desc" && <ChevronDown className="ml-2 h-4 w-4" />}
             </Button>
           )
         },
-        size: 180,
-        cell: ({ row }) => getOperationTypeLabel(row.original.type),
+        size: 220,
+        cell: ({ row }) => (
+          <div className="space-y-1">
+            <div className="font-medium text-sm">{getOperationTypeLabel(row.original.type)}</div>
+            <div className="font-mono text-xs text-gray-500">{row.original.id}</div>
+          </div>
+        ),
+      },
+      {
+        accessorKey: 'subject',
+        header: 'Subject',
+        size: 200,
+        cell: ({ row }) => {
+          // Configuration for extracting subject fields by operation type
+          const subjectConfig: Record<OperationType, { primary: string[], secondary: string[] }> = {
+            safe_provision: {
+              primary: ['safe_name', 'safeName'],
+              secondary: ['safe_id', 'safeId', 'id']
+            },
+            safe_modify: {
+              primary: ['safe_name', 'safeName'],
+              secondary: ['safe_id', 'safeId', 'id']
+            },
+            safe_delete: {
+              primary: ['safe_name', 'safeName'],
+              secondary: ['safe_id', 'safeId', 'id']
+            },
+            access_grant: {
+              primary: ['username', 'user', 'user_id'],
+              secondary: ['safe_name', 'safeName', 'role', 'role_name', 'target']
+            },
+            access_revoke: {
+              primary: ['username', 'user', 'user_id'],
+              secondary: ['safe_name', 'safeName', 'role', 'role_name', 'target']
+            },
+            user_sync: {
+              primary: ['username', 'user_id', 'email'],
+              secondary: ['source', 'directory', 'domain']
+            },
+            safe_sync: {
+              primary: ['safe_name', 'safeName'],
+              secondary: ['safe_id', 'safeId', 'id']
+            },
+            group_sync: {
+              primary: ['group_name', 'groupName', 'group_id'],
+              secondary: ['source', 'directory', 'domain']
+            }
+          };
+          
+          // Helper function to extract value from payload using field paths
+          const extractValue = (payload: any, fields: string[]): string => {
+            for (const field of fields) {
+              const value = field.split('.').reduce((obj, key) => obj?.[key], payload);
+              if (value !== undefined && value !== null && value !== '') {
+                return String(value);
+              }
+            }
+            return '-';
+          };
+          
+          const payload = row.original.payload as any;
+          const config = subjectConfig[row.original.type];
+          
+          let primarySubject = '-';
+          let secondarySubject = '-';
+          
+          if (config) {
+            primarySubject = extractValue(payload, config.primary);
+            secondarySubject = extractValue(payload, config.secondary);
+          } else {
+            // Fallback for unknown operation types
+            primarySubject = extractValue(payload, ['name', 'target', 'id']);
+            secondarySubject = extractValue(payload, ['description', 'type']);
+          }
+          
+          return (
+            <div className="space-y-1">
+              <div className="text-sm font-medium text-gray-900 truncate" title={primarySubject}>
+                {primarySubject}
+              </div>
+              <div className="text-xs text-gray-500 truncate" title={secondarySubject}>
+                {secondarySubject}
+              </div>
+            </div>
+          );
+        },
       },
       {
         accessorKey: 'priority',
@@ -333,11 +382,43 @@ export default function OperationsTable() {
           )
         },
         size: 100,
-        cell: ({ row }) => (
-          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getPriorityColor(row.original.priority)}`}>
-            {row.original.priority}
-          </span>
-        ),
+        cell: ({ row }) => {
+          const priorityBadgeColors: Record<Priority, string> = {
+            high: 'bg-red-100 text-red-700 border border-red-200',
+            medium: 'bg-amber-100 text-amber-700 border border-amber-200', 
+            normal: 'bg-blue-100 text-blue-700 border border-blue-200',
+            low: 'bg-gray-100 text-gray-600 border border-gray-200',
+          };
+          
+          return (
+            <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium uppercase ${priorityBadgeColors[row.original.priority]}`}>
+              {row.original.priority}
+            </span>
+          );
+        },
+      },
+      {
+        accessorKey: 'created_by',
+        header: 'Created By',
+        size: 150,
+        cell: ({ row }) => {
+          const userInfo = row.original.created_by_user;
+          const userId = row.original.created_by;
+          
+          if (!userId && !userInfo) {
+            return <span className="text-gray-400 text-xs">System</span>;
+          }
+          
+          const username = userInfo?.username || 'Unknown User';
+          const displayId = userInfo?.id || userId || '-';
+          
+          return (
+            <div className="space-y-1">
+              <div className="text-sm font-medium text-gray-900">{username}</div>
+              <div className="text-xs text-gray-500 font-mono">{displayId}</div>
+            </div>
+          );
+        },
       },
       {
         accessorKey: 'created_at',
@@ -364,19 +445,34 @@ export default function OperationsTable() {
           )
         },
         size: 180,
-        cell: ({ row }) => format(new Date(row.original.created_at), 'MMM d, HH:mm:ss'),
-      },
-      {
-        accessorKey: 'error_message',
-        header: 'Error',
-        size: 300,
-        cell: ({ row }) => (
-          row.original.error_message ? (
-            <div className="text-sm text-red-600 truncate" title={row.original.error_message}>
-              {row.original.error_message}
+        cell: ({ row }) => {
+          const createdDate = new Date(row.original.created_at);
+          const now = new Date();
+          const diffInSeconds = Math.floor((now.getTime() - createdDate.getTime()) / 1000);
+          
+          let relativeTime: string;
+          if (diffInSeconds < 60) {
+            relativeTime = 'just now';
+          } else if (diffInSeconds < 3600) {
+            const minutes = Math.floor(diffInSeconds / 60);
+            relativeTime = `${minutes}m ago`;
+          } else if (diffInSeconds < 86400) {
+            const hours = Math.floor(diffInSeconds / 3600);
+            relativeTime = `${hours}h ago`;
+          } else if (diffInSeconds < 604800) {
+            const days = Math.floor(diffInSeconds / 86400);
+            relativeTime = `${days}d ago`;
+          } else {
+            relativeTime = format(createdDate, 'MMM d');
+          }
+          
+          return (
+            <div className="space-y-0.5">
+              <div className="text-sm">{format(createdDate, 'MMM d, HH:mm:ss')}</div>
+              <div className="text-xs text-gray-500">{relativeTime}</div>
             </div>
-          ) : null
-        ),
+          );
+        },
       },
       {
         id: 'actions',
@@ -872,7 +968,11 @@ export default function OperationsTable() {
                 {table.getHeaderGroups().map((headerGroup) => (
                   <TableRow key={headerGroup.id}>
                     {headerGroup.headers.map((header) => (
-                      <TableHead key={header.id} style={{ width: header.getSize() }}>
+                      <TableHead 
+                        key={header.id} 
+                        style={{ width: header.getSize() }}
+                        className={header.column.id === 'status' ? 'px-0' : ''}
+                      >
                         {header.isPlaceholder
                           ? null
                           : flexRender(header.column.columnDef.header, header.getContext())}
@@ -890,7 +990,10 @@ export default function OperationsTable() {
                       onClick={() => handleRowClick(row.original)}
                     >
                       {row.getVisibleCells().map((cell) => (
-                        <TableCell key={cell.id}>
+                        <TableCell 
+                          key={cell.id}
+                          className={cell.column.id === 'status' ? 'px-0' : ''}
+                        >
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
                         </TableCell>
                       ))}
