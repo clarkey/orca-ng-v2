@@ -1,0 +1,55 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: orca-ng-postgres
+    environment:
+      POSTGRES_USER: orca
+      POSTGRES_PASSWORD: orca_dev_password
+      POSTGRES_DB: orca_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orca -d orca_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: orca-ng-backend
+    ports:
+      - "8080:8080"
+    environment:
+      - DATABASE_URL=postgres://orca:orca_dev_password@postgres:5432/orca_db?sslmode=disable
+      - APP_ENV=development
+      - SESSION_SECRET=dev-session-secret-change-in-production
+      - LOG_LEVEL=debug
+    volumes:
+      - ./backend:/app
+      - go_mod_cache:/go/pkg/mod
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: orca-ng-frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://localhost:8080/api
+    command: npm run dev
+
+volumes:
+  postgres_data:
+  go_mod_cache:
