@@ -2,9 +2,7 @@ package main
 
 import (
 	"context"
-	"embed"
 	"fmt"
-	"io/fs"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,8 +18,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-//go:embed all:dist
-var staticFiles embed.FS
+// Static files embedding is handled in embed.go and embed_dev.go
 
 func main() {
 	// Load configuration
@@ -110,19 +107,12 @@ func main() {
 		}
 	}
 
-	// Serve static files
-	staticFS, err := fs.Sub(staticFiles, "dist")
-	if err != nil {
-		logrus.WithError(err).Warn("Failed to setup static files, frontend may not be available")
+	// Serve static files (only in production)
+	if os.Getenv("APP_ENV") != "development" {
+		setupStaticFiles(router)
 	} else {
-		router.NoRoute(func(c *gin.Context) {
-			// For SPA routing, serve index.html for all non-API routes
-			if c.Request.URL.Path == "/" || !isAPIPath(c.Request.URL.Path) {
-				c.FileFromFS("/", http.FS(staticFS))
-			} else {
-				c.FileFromFS(c.Request.URL.Path, http.FS(staticFS))
-			}
-		})
+		// In development, the frontend is served separately
+		logrus.Info("Running in development mode, frontend served separately")
 	}
 
 	// Start server

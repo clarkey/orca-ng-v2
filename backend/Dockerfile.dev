@@ -12,5 +12,5 @@ RUN go mod tidy
 
 EXPOSE 8080
 
-# Just run the application directly
-CMD ["go", "run", "./cmd/orca"]
+# Just run the application directly with dev build tag
+CMD ["go", "run", "-tags", "dev", "./cmd/orca"]
