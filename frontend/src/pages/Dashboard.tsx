@@ -1,18 +1,16 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { useInstance } from '@/contexts/InstanceContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Layout } from '@/components/Layout';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { PageContainer } from '@/components/PageContainer';
 
 export function Dashboard() {
   const { user } = useAuth();
   const { currentInstance, isOverviewMode } = useInstance();
 
   return (
-    <Layout>
-      <div className="p-6">
-        <div className="max-w-7xl mx-auto">
+    <PageContainer>
           {/* Instance Header */}
           {!isOverviewMode && currentInstance && (
             <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
@@ -154,8 +152,6 @@ export function Dashboard() {
               </div>
             </div>
           )}
-        </div>
-      </div>
-    </Layout>
+    </PageContainer>
   );
 }

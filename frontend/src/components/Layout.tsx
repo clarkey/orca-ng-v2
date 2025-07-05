@@ -1,5 +1,4 @@
-import { ReactNode } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate, Outlet } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useInstance } from '@/contexts/InstanceContext';
 import { Button } from '@/components/ui/button';
@@ -23,26 +22,35 @@ import {
   Users,
   Layers,
   Settings,
+  ListTodo,
+  Server,
 } from 'lucide-react';
 
-interface LayoutProps {
-  children: ReactNode;
-}
-
-export function Layout({ children }: LayoutProps) {
+export function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const { instances, currentInstanceId, setCurrentInstanceId, currentInstance } = useInstance();
 
-  const navigation = [
-    { name: 'Dashboard', href: '/', icon: LayoutDashboard },
-    { name: 'Safes', href: '/safes', icon: Vault },
-    { name: 'Access', href: '/access', icon: Key },
-    { name: 'Users', href: '/users', icon: Users },
-    { name: 'Applications', href: '/applications', icon: Layers },
-    { name: 'Settings', href: '/settings', icon: Settings },
-  ];
+  const navigation = {
+    main: [
+      { name: 'Dashboard', href: '/', icon: LayoutDashboard },
+    ],
+    cyberark: [
+      { name: 'Safes', href: '/safes', icon: Vault },
+      { name: 'Access Roles', href: '/access', icon: Key },
+      { name: 'Users & Groups', href: '/users', icon: Users },
+      { name: 'Applications', href: '/applications', icon: Layers },
+    ],
+    operations: [
+      { name: 'Operations Queue', href: '/operations', icon: ListTodo },
+      { name: 'Pipeline Monitor', href: '/pipeline', icon: Database },
+    ],
+    administration: [
+      { name: 'Instances', href: '/instances', icon: Server },
+      { name: 'Settings', href: '/settings', icon: Settings },
+    ],
+  };
 
   const handleLogout = async () => {
     await logout();
@@ -60,8 +68,8 @@ export function Layout({ children }: LayoutProps) {
 
         {/* Instance Selector */}
         <div className="px-4 py-4 border-b border-gray-200">
-          <label className="block text-xs font-medium text-gray-600 mb-2">
-            CYBERARK INSTANCE
+          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+            CyberArk Instance
           </label>
           <Select value={currentInstanceId} onValueChange={setCurrentInstanceId}>
             <SelectTrigger className="w-full bg-white border-gray-300">
@@ -86,25 +94,103 @@ export function Layout({ children }: LayoutProps) {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 px-4 py-4">
-          <ul className="space-y-1">
-            {navigation.map((item) => (
-              <li key={item.name}>
-                <Link
-                  to={item.href}
-                  className={cn(
-                    "flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors",
-                    location.pathname === item.href
-                      ? "bg-gray-200 text-gray-900"
-                      : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-                  )}
-                >
-                  <item.icon className="mr-3 h-4 w-4" />
-                  {item.name}
-                </Link>
-              </li>
-            ))}
-          </ul>
+        <nav className="flex-1 px-4 py-4 space-y-6">
+          {/* Main */}
+          <div>
+            <ul className="space-y-1">
+              {navigation.main.map((item) => (
+                <li key={item.name}>
+                  <Link
+                    to={item.href}
+                    className={cn(
+                      "flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                      location.pathname === item.href
+                        ? "bg-gray-200 text-gray-900"
+                        : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                    )}
+                  >
+                    <item.icon className="mr-3 h-4 w-4" />
+                    {item.name}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* CyberArk Management */}
+          <div>
+            <h3 className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+              CyberArk Management
+            </h3>
+            <ul className="space-y-1">
+              {navigation.cyberark.map((item) => (
+                <li key={item.name}>
+                  <Link
+                    to={item.href}
+                    className={cn(
+                      "flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                      location.pathname === item.href
+                        ? "bg-gray-200 text-gray-900"
+                        : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                    )}
+                  >
+                    <item.icon className="mr-3 h-4 w-4" />
+                    {item.name}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Operations & Processing */}
+          <div>
+            <h3 className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+              Operations & Processing
+            </h3>
+            <ul className="space-y-1">
+              {navigation.operations.map((item) => (
+                <li key={item.name}>
+                  <Link
+                    to={item.href}
+                    className={cn(
+                      "flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                      location.pathname === item.href
+                        ? "bg-gray-200 text-gray-900"
+                        : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                    )}
+                  >
+                    <item.icon className="mr-3 h-4 w-4" />
+                    {item.name}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Administration */}
+          <div>
+            <h3 className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+              Administration
+            </h3>
+            <ul className="space-y-1">
+              {navigation.administration.map((item) => (
+                <li key={item.name}>
+                  <Link
+                    to={item.href}
+                    className={cn(
+                      "flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                      location.pathname === item.href
+                        ? "bg-gray-200 text-gray-900"
+                        : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                    )}
+                  >
+                    <item.icon className="mr-3 h-4 w-4" />
+                    {item.name}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
         </nav>
 
         {/* User section */}
@@ -137,7 +223,14 @@ export function Layout({ children }: LayoutProps) {
         {/* Top bar */}
         <header className="h-16 bg-white border-b border-gray-200 px-6 flex items-center justify-between">
           <h1 className="text-xl font-medium text-gray-900">
-            {navigation.find(item => item.href === location.pathname)?.name || 'Dashboard'}
+            {(() => {
+              // Find current page in all navigation sections
+              for (const section of Object.values(navigation)) {
+                const item = section.find(item => item.href === location.pathname);
+                if (item) return item.name;
+              }
+              return 'Dashboard';
+            })()}
           </h1>
           <Button
             variant="ghost"
@@ -151,7 +244,7 @@ export function Layout({ children }: LayoutProps) {
 
         {/* Page content */}
         <main className="flex-1 overflow-auto">
-          {children}
+          <Outlet />
         </main>
       </div>
     </div>

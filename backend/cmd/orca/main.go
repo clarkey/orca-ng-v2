@@ -15,6 +15,8 @@ import (
 	"github.com/orca-ng/orca/internal/database"
 	"github.com/orca-ng/orca/internal/handlers"
 	"github.com/orca-ng/orca/internal/middleware"
+	"github.com/orca-ng/orca/internal/pipeline"
+	phandlers "github.com/orca-ng/orca/internal/pipeline/handlers"
 	"github.com/sirupsen/logrus"
 )
 
@@ -81,8 +83,29 @@ func main() {
 		"session_timeout": sessionTimeout,
 	}).Info("Session timeout configured")
 
+	// Initialize pipeline
+	sqlDB := db.SqlDB()
+	pipelineStore := pipeline.NewStore(sqlDB)
+	pipelineConfig, err := pipelineStore.GetPipelineConfig(ctx)
+	if err != nil {
+		logrus.WithError(err).Fatal("Failed to load pipeline configuration")
+	}
+	
+	processor := pipeline.NewProcessor(sqlDB, pipelineConfig, logrus.StandardLogger())
+	
+	// Register operation handlers
+	processor.RegisterHandler(pipeline.OpTypeSafeProvision, phandlers.NewSafeProvisionHandler())
+	processor.RegisterHandler(pipeline.OpTypeUserSync, phandlers.NewUserSyncHandler())
+	processor.RegisterHandler(pipeline.OpTypeSafeSync, phandlers.NewSafeSyncHandler())
+	
+	// Start the processing pipeline
+	if err := processor.Start(ctx); err != nil {
+		logrus.WithError(err).Fatal("Failed to start processing pipeline")
+	}
+	
 	// Initialize handlers
 	authHandler := handlers.NewAuthHandler(db, sessionTimeout)
+	operationsHandler := handlers.NewOperationsHandler(pipelineStore, logrus.StandardLogger())
 
 	// API routes
 	api := router.Group("/api")
@@ -98,11 +121,22 @@ func main() {
 		{
 			protected.GET("/auth/me", authHandler.GetCurrentUser)
 			
+			// Operations routes
+			protected.POST("/operations", operationsHandler.CreateOperation)
+			protected.GET("/operations", operationsHandler.ListOperations)
+			protected.GET("/operations/:id", operationsHandler.GetOperation)
+			protected.POST("/operations/:id/cancel", operationsHandler.CancelOperation)
+			
+			// Pipeline management routes
+			protected.GET("/pipeline/metrics", operationsHandler.GetPipelineMetrics)
+			protected.GET("/pipeline/config", operationsHandler.GetPipelineConfig)
+			
 			// Admin routes
 			admin := protected.Group("/admin")
 			admin.Use(middleware.AdminRequired())
 			{
-				// Add admin routes here
+				// Pipeline configuration (admin only)
+				admin.PUT("/pipeline/config", operationsHandler.UpdatePipelineConfig)
 			}
 		}
 	}
@@ -128,6 +162,11 @@ func main() {
 		<-sigint
 
 		logrus.Info("Shutting down server...")
+		
+		// Stop the processing pipeline first
+		if err := processor.Stop(); err != nil {
+			logrus.WithError(err).Error("Error stopping processing pipeline")
+		}
 		
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer shutdownCancel()

@@ -11,10 +11,12 @@ import (
 type Prefix string
 
 const (
-	UserPrefix    Prefix = "usr"
-	SessionPrefix Prefix = "ses"
-	SafePrefix    Prefix = "saf"
-	RolePrefix    Prefix = "rol"
+	UserPrefix      Prefix = "usr"
+	SessionPrefix   Prefix = "ses"
+	SafePrefix      Prefix = "saf"
+	RolePrefix      Prefix = "rol"
+	OperationPrefix Prefix = "op"
+	ConfigPrefix    Prefix = "cfg"
 )
 
 func New(prefix Prefix) string {

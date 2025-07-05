@@ -103,3 +103,18 @@ func AdminRequired() gin.HandlerFunc {
 		c.Next()
 	}
 }
+
+// GetUser retrieves the authenticated user from the gin context
+func GetUser(c *gin.Context) *models.User {
+	userInterface, exists := c.Get("user")
+	if !exists {
+		return nil
+	}
+	
+	user, ok := userInterface.(*models.User)
+	if !ok {
+		return nil
+	}
+	
+	return user
+}

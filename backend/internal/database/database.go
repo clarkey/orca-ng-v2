@@ -2,9 +2,11 @@ package database
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
 )
 
 type DB struct {
@@ -37,4 +39,9 @@ func (db *DB) Close() {
 
 func (db *DB) Pool() *pgxpool.Pool {
 	return db.pool
+}
+
+// SqlDB returns a standard database/sql.DB interface from the pool
+func (db *DB) SqlDB() *sql.DB {
+	return stdlib.OpenDBFromPool(db.pool)
 }
