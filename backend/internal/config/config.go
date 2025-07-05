@@ -44,12 +44,13 @@ func Load() (*Config, error) {
 	// Set defaults
 	viper.SetDefault("server.port", 8080)
 	viper.SetDefault("server.host", "0.0.0.0")
-	viper.SetDefault("session.timeout", 1440) // 24 hours
+	viper.SetDefault("session.sessiontimeout", 1440) // 24 hours
 	viper.SetDefault("log.level", "info")
 
 	// Override with environment variables
 	viper.BindEnv("database.url", "DATABASE_URL")
 	viper.BindEnv("session.secret", "SESSION_SECRET")
+	viper.BindEnv("session.sessiontimeout", "SESSION_TIMEOUT")
 	viper.BindEnv("log.level", "LOG_LEVEL")
 
 	if err := viper.ReadInConfig(); err != nil {

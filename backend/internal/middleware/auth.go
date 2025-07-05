@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -28,16 +29,34 @@ func AuthRequired(db *database.DB) gin.HandlerFunc {
 			var err error
 			token, err = c.Cookie("session_token")
 			if err != nil {
+				// Debug: log all cookies
+				logrus.WithFields(logrus.Fields{
+					"cookies": c.Request.Header.Get("Cookie"),
+					"error": err,
+				}).Debug("No session_token cookie found")
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
 				c.Abort()
 				return
 			}
+			// The token might be URL-encoded from the cookie, decode it
+			if decodedToken, err := url.QueryUnescape(token); err == nil {
+				token = decodedToken
+			}
 		}
+		
+		// Log token for debugging
+		logrus.WithFields(logrus.Fields{
+			"token": token,
+			"token_length": len(token),
+		}).Debug("Attempting to validate session token")
 		
 		// Validate session
 		session, err := db.GetSessionByToken(c.Request.Context(), token)
 		if err != nil {
-			logrus.WithError(err).Debug("Invalid session token")
+			logrus.WithFields(logrus.Fields{
+				"token": token,
+				"error": err,
+			}).Debug("Invalid session token")
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired session"})
 			c.Abort()
 			return

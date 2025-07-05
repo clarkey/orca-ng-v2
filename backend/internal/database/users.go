@@ -103,7 +103,7 @@ func (db *DB) CreateUser(ctx context.Context, username, password string, isAdmin
 
 func (db *DB) UpdateLastLogin(ctx context.Context, userID string) error {
 	query := `UPDATE users SET last_login_at = $1 WHERE id = $2`
-	_, err := db.pool.Exec(ctx, query, time.Now(), userID)
+	_, err := db.pool.Exec(ctx, query, time.Now().UTC(), userID)
 	if err != nil {
 		return fmt.Errorf("failed to update last login: %w", err)
 	}
@@ -120,7 +120,7 @@ func (db *DB) CreateSession(ctx context.Context, userID, userAgent, ipAddress st
 		ID:        ulid.New(ulid.SessionPrefix),
 		UserID:    userID,
 		Token:     token,
-		ExpiresAt: time.Now().Add(duration),
+		ExpiresAt: time.Now().UTC().Add(duration),
 	}
 	
 	if userAgent != "" {
@@ -148,12 +148,12 @@ func (db *DB) CreateSession(ctx context.Context, userID, userAgent, ipAddress st
 func (db *DB) GetSessionByToken(ctx context.Context, token string) (*models.Session, error) {
 	var sess models.Session
 	query := `
-		SELECT id, user_id, token, expires_at, created_at, updated_at, user_agent, ip_address
+		SELECT id, user_id, token, expires_at, created_at, updated_at, user_agent, ip_address::text
 		FROM sessions
 		WHERE token = $1 AND expires_at > $2
 	`
 	
-	row := db.pool.QueryRow(ctx, query, token, time.Now())
+	row := db.pool.QueryRow(ctx, query, token, time.Now().UTC())
 	err := row.Scan(
 		&sess.ID,
 		&sess.UserID,
@@ -186,7 +186,7 @@ func (db *DB) DeleteSession(ctx context.Context, token string) error {
 
 func (db *DB) DeleteExpiredSessions(ctx context.Context) error {
 	query := `DELETE FROM sessions WHERE expires_at < $1`
-	_, err := db.pool.Exec(ctx, query, time.Now())
+	_, err := db.pool.Exec(ctx, query, time.Now().UTC())
 	if err != nil {
 		return fmt.Errorf("failed to delete expired sessions: %w", err)
 	}

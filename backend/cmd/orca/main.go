@@ -79,6 +79,10 @@ func main() {
 
 	// Session timeout
 	sessionTimeout := time.Duration(cfg.Session.SessionTimeout) * time.Minute
+	logrus.WithFields(logrus.Fields{
+		"session_timeout_minutes": cfg.Session.SessionTimeout,
+		"session_timeout": sessionTimeout,
+	}).Info("Session timeout configured")
 
 	// Initialize handlers
 	authHandler := handlers.NewAuthHandler(db, sessionTimeout)

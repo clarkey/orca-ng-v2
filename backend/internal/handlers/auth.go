@@ -68,8 +68,15 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		// Don't fail the login for this
 	}
 
+	// Log session creation for debugging
+	logrus.WithFields(logrus.Fields{
+		"session_token": session.Token,
+		"user_id": user.ID,
+		"expires_at": session.ExpiresAt,
+	}).Debug("Session created successfully")
+	
 	// Set session cookie
-	c.SetSameSite(http.SameSiteStrictMode)
+	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie(
 		"session_token",
 		session.Token,
@@ -110,6 +117,7 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	}
 
 	// Clear cookie
+	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie(
 		"session_token",
 		"",
