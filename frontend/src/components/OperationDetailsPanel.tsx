@@ -52,15 +52,17 @@ export function OperationDetailsPanel({ operation, onClose, onUpdate }: Operatio
 
   return (
     <Dialog open={!!operation} onOpenChange={() => onClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <DialogTitle>Operation Details</DialogTitle>
-          <DialogDescription className="font-mono text-xs">
-            {operation.id}
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent className="max-w-2xl p-0 overflow-hidden">
+        <div className="bg-gray-50 border-b border-gray-200 px-6 py-4">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-semibold text-gray-900">Operation Details</DialogTitle>
+            <DialogDescription className="font-mono text-xs text-gray-600">
+              {operation.id}
+            </DialogDescription>
+          </DialogHeader>
+        </div>
 
-        <div className="flex-1 overflow-y-auto py-4">
+        <div className="px-6 pb-6 pt-2 max-h-[70vh] overflow-y-auto">
           <div className="space-y-6">
             {/* Scheduled Time Alert for Future Operations */}
             {isScheduledForFuture && (
@@ -99,7 +101,6 @@ export function OperationDetailsPanel({ operation, onClose, onUpdate }: Operatio
                 <div className="mt-1">
                   <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium uppercase ${
                     operation.priority === 'high' ? 'bg-red-100 text-red-700 border border-red-200' :
-                    operation.priority === 'medium' ? 'bg-amber-100 text-amber-700 border border-amber-200' :
                     operation.priority === 'normal' ? 'bg-blue-100 text-blue-700 border border-blue-200' :
                     'bg-gray-100 text-gray-600 border border-gray-200'
                   }`}>
@@ -218,7 +219,8 @@ export function OperationDetailsPanel({ operation, onClose, onUpdate }: Operatio
           </div>
         </div>
 
-        <DialogFooter>
+        <div className="px-6 py-4 border-t border-gray-200">
+          <DialogFooter className="gap-2">
           {(operation.status === 'pending' || operation.status === 'processing') && (
             <Button 
               variant="outline" 
@@ -250,7 +252,8 @@ export function OperationDetailsPanel({ operation, onClose, onUpdate }: Operatio
               Retry
             </Button>
           )}
-        </DialogFooter>
+          </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );

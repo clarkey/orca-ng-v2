@@ -30,54 +30,6 @@ func NewOperationsHandler(store *pipeline.Store, db *sql.DB, logger *logrus.Logg
 	}
 }
 
-// CreateOperation creates a new operation
-func (h *OperationsHandler) CreateOperation(c *gin.Context) {
-	var req pipeline.CreateOperationRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	
-	// Get user from context
-	user := middleware.GetUser(c)
-	
-	// Create operation
-	op, err := h.store.CreateOperation(c.Request.Context(), &req, &user.ID)
-	if err != nil {
-		h.logger.WithError(err).Error("Failed to create operation")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create operation"})
-		return
-	}
-	
-	h.logger.WithFields(logrus.Fields{
-		"operation_id": op.ID,
-		"type":        op.Type,
-		"priority":    op.Priority,
-		"user_id":     user.ID,
-	}).Info("Operation created")
-	
-	// Check if client wants to wait for completion
-	if req.Wait {
-		timeout := 30 * time.Second // Default timeout
-		if req.WaitTimeoutSeconds > 0 {
-			timeout = time.Duration(req.WaitTimeoutSeconds) * time.Second
-		}
-		
-		// Wait for operation to complete
-		completedOp, err := h.store.WaitForOperation(c.Request.Context(), op.ID, timeout)
-		if err != nil {
-			// Return current state even if timeout
-			h.logger.WithError(err).Warn("Wait for operation failed")
-		} else {
-			op = completedOp
-		}
-	}
-	
-	// Convert to response
-	response := h.operationToResponse(op)
-	c.JSON(http.StatusCreated, response)
-}
-
 // GetOperation retrieves an operation by ID
 func (h *OperationsHandler) GetOperation(c *gin.Context) {
 	id := c.Param("id")
@@ -388,8 +340,9 @@ func (h *OperationsHandler) operationToResponse(op *pipeline.Operation) pipeline
 		ScheduledAt:  op.ScheduledAt,
 		StartedAt:    op.StartedAt,
 		CreatedAt:    op.CreatedAt,
-		CompletedAt:  op.CompletedAt,
-		CreatedBy:    op.CreatedBy,
+		CompletedAt:        op.CompletedAt,
+		CreatedBy:          op.CreatedBy,
+		CyberArkInstanceID: op.CyberArkInstanceID,
 	}
 	
 	// Dereference Result if not nil
@@ -408,6 +361,20 @@ func (h *OperationsHandler) operationToResponse(op *pipeline.Operation) pipeline
 			}
 		} else {
 			h.logger.WithError(err).Warn("Failed to fetch user info for operation")
+		}
+	}
+	
+	// Fetch CyberArk instance info if cyberark_instance_id is set
+	if op.CyberArkInstanceID != nil && *op.CyberArkInstanceID != "" {
+		var instanceName string
+		err := h.db.QueryRow("SELECT name FROM cyberark_instances WHERE id = $1", *op.CyberArkInstanceID).Scan(&instanceName)
+		if err == nil {
+			resp.CyberArkInstanceInfo = &pipeline.CyberArkInstanceInfo{
+				ID:   *op.CyberArkInstanceID,
+				Name: instanceName,
+			}
+		} else {
+			h.logger.WithError(err).Debug("Failed to fetch CyberArk instance info for operation")
 		}
 	}
 	

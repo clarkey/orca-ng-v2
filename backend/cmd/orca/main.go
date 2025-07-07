@@ -132,7 +132,6 @@ func main() {
 			protected.GET("/auth/me", authHandler.GetCurrentUser)
 			
 			// Operations routes
-			protected.POST("/operations", operationsHandler.CreateOperation)
 			protected.GET("/operations", operationsHandler.ListOperations)
 			protected.GET("/operations/stats", operationsHandler.GetOperationStats)
 			protected.GET("/operations/:id", operationsHandler.GetOperation)

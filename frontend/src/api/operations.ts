@@ -1,6 +1,6 @@
 import { apiClient } from './client';
 
-export type Priority = 'high' | 'medium' | 'normal' | 'low';
+export type Priority = 'high' | 'normal' | 'low';
 export type Status = 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
 export type OperationType = 
   | 'safe_provision' 
@@ -17,6 +17,11 @@ export interface UserInfo {
   username: string;
 }
 
+export interface CyberArkInstanceInfo {
+  id: string;
+  name: string;
+}
+
 export interface Operation {
   id: string;
   type: OperationType;
@@ -31,17 +36,10 @@ export interface Operation {
   completed_at?: string;
   created_by?: string;
   created_by_user?: UserInfo;
+  cyberark_instance_id?: string;
+  cyberark_instance_info?: CyberArkInstanceInfo;
 }
 
-export interface CreateOperationRequest {
-  type: OperationType;
-  priority?: Priority;
-  payload: any;
-  wait?: boolean;
-  wait_timeout_seconds?: number;
-  scheduled_at?: string;
-  correlation_id?: string;
-}
 
 // Operation list response with pagination
 export interface OperationsListResponse {
@@ -107,11 +105,6 @@ export interface PipelineConfig {
 }
 
 export const operationsApi = {
-  // Create a new operation
-  create: async (request: CreateOperationRequest): Promise<Operation> => {
-    return await apiClient.post<Operation>('/operations', request);
-  },
-
   // Get operation by ID
   get: async (id: string): Promise<Operation> => {
     return await apiClient.get<Operation>(`/operations/${id}`);
@@ -180,7 +173,6 @@ export function getOperationTypeLabel(type: OperationType): string {
 export function getPriorityColor(priority: Priority): string {
   const colors: Record<Priority, string> = {
     high: 'text-red-600 bg-red-100',
-    medium: 'text-yellow-600 bg-yellow-100',
     normal: 'text-blue-600 bg-blue-100',
     low: 'text-gray-600 bg-gray-100',
   };

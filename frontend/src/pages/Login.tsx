@@ -5,22 +5,46 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { OrcaIcon } from '@/components/OrcaIcon';
 import { LogoWithStroke } from '@/components/LogoWithStroke';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormMessage,
+} from '@/components/ui/form';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { AlertCircle } from 'lucide-react';
+
+const loginSchema = z.object({
+  username: z.string().min(1, 'Username is required'),
+  password: z.string().min(1, 'Password is required'),
+});
+
+type LoginFormData = z.infer<typeof loginSchema>;
 
 export function Login() {
   const navigate = useNavigate();
   const { login } = useAuth();
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const form = useForm<LoginFormData>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: {
+      username: '',
+      password: '',
+    },
+  });
+
+  const handleSubmit = async (values: LoginFormData) => {
     setError('');
     setIsLoading(true);
 
     try {
-      await login({ username, password });
+      await login({ username: values.username, password: values.password });
       navigate('/');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
@@ -74,46 +98,63 @@ export function Login() {
                 <span className="px-2 bg-white text-gray-500">or</span>
               </div>
             </div>
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div>
-                <Input
-                  id="username"
-                  type="text"
-                  placeholder="Username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  required
-                  disabled={isLoading}
-                  autoComplete="username"
-                  className="h-11 focus-visible:ring-slate-700"
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
+                {error && (
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                )}
+                
+                <FormField
+                  control={form.control}
+                  name="username"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormControl>
+                        <Input
+                          placeholder="Username"
+                          autoComplete="username"
+                          className="h-11 focus-visible:ring-slate-700"
+                          disabled={isLoading}
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
-              </div>
-              <div>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="Password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  disabled={isLoading}
-                  autoComplete="current-password"
-                  className="h-11 focus-visible:ring-slate-700"
+                
+                <FormField
+                  control={form.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormControl>
+                        <Input
+                          type="password"
+                          placeholder="Password"
+                          autoComplete="current-password"
+                          className="h-11 focus-visible:ring-slate-700"
+                          disabled={isLoading}
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
-              </div>
-              {error && (
-                <div className="rounded-md bg-red-50 border border-red-200 p-3">
-                  <p className="text-sm text-red-800">{error}</p>
-                </div>
-              )}
-              <Button
-                type="submit"
-                className="w-full h-11 bg-white hover:bg-gray-50 text-gray-900 font-medium border border-gray-300"
-                disabled={isLoading}
-              >
-                {isLoading ? 'Logging in...' : 'Log in with ORCA'}
-              </Button>
-            </form>
+                
+                <Button
+                  type="submit"
+                  className="w-full h-11 bg-white hover:bg-gray-50 text-gray-900 font-medium border border-gray-300"
+                  disabled={isLoading}
+                >
+                  {isLoading ? 'Logging in...' : 'Log in with ORCA'}
+                </Button>
+              </form>
+            </Form>
           </div>
 
           <p className="text-center text-xs text-gray-500 mt-8">

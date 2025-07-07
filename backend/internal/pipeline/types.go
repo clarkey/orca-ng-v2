@@ -11,7 +11,6 @@ type Priority string
 
 const (
 	PriorityHigh   Priority = "high"
-	PriorityMedium Priority = "medium"
 	PriorityNormal Priority = "normal"
 	PriorityLow    Priority = "low"
 )
@@ -123,23 +122,31 @@ type CreateOperationRequest struct {
 
 // OperationResponse represents an API response for an operation
 type OperationResponse struct {
-	ID           string          `json:"id"`
-	Type         OperationType   `json:"type"`
-	Priority     Priority        `json:"priority"`
-	Status       Status          `json:"status"`
-	Payload      json.RawMessage `json:"payload,omitempty"`
-	Result       json.RawMessage `json:"result,omitempty"`
-	ErrorMessage *string         `json:"error_message,omitempty"`
-	ScheduledAt  time.Time       `json:"scheduled_at"`
-	StartedAt    *time.Time      `json:"started_at,omitempty"`
-	CreatedAt    time.Time       `json:"created_at"`
-	CompletedAt  *time.Time      `json:"completed_at,omitempty"`
-	CreatedBy    *string         `json:"created_by,omitempty"`
-	CreatedByUser *UserInfo      `json:"created_by_user,omitempty"`
+	ID                   string               `json:"id"`
+	Type                 OperationType        `json:"type"`
+	Priority             Priority             `json:"priority"`
+	Status               Status               `json:"status"`
+	Payload              json.RawMessage      `json:"payload,omitempty"`
+	Result               json.RawMessage      `json:"result,omitempty"`
+	ErrorMessage         *string              `json:"error_message,omitempty"`
+	ScheduledAt          time.Time            `json:"scheduled_at"`
+	StartedAt            *time.Time           `json:"started_at,omitempty"`
+	CreatedAt            time.Time            `json:"created_at"`
+	CompletedAt          *time.Time           `json:"completed_at,omitempty"`
+	CreatedBy            *string              `json:"created_by,omitempty"`
+	CreatedByUser        *UserInfo            `json:"created_by_user,omitempty"`
+	CyberArkInstanceID   *string              `json:"cyberark_instance_id,omitempty"`
+	CyberArkInstanceInfo *CyberArkInstanceInfo `json:"cyberark_instance_info,omitempty"`
 }
 
 // UserInfo represents basic user information for API responses
 type UserInfo struct {
 	ID       string `json:"id"`
 	Username string `json:"username"`
+}
+
+// CyberArkInstanceInfo represents basic CyberArk instance information for API responses
+type CyberArkInstanceInfo struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }

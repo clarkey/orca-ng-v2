@@ -244,17 +244,6 @@ export function CyberArkInstanceForm({ open, onClose, onSuccess, instance }: Cyb
                   <AlertDescription>{submitError}</AlertDescription>
                 </Alert>
               )}
-              
-              {/* Warning for new instances that haven't been tested */}
-              {!instance && !hasTestedSuccessfully && !testResult && (
-                <Alert>
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertTitle>Connection Test Required</AlertTitle>
-                  <AlertDescription>
-                    Please test the connection before creating the instance
-                  </AlertDescription>
-                </Alert>
-              )}
 
             <FormField
               control={form.control}
