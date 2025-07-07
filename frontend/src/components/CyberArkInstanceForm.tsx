@@ -11,6 +11,7 @@ import {
   DialogFooter,
 } from './ui/dialog';
 import { DialogHeaderStyled } from './ui/dialog-header-styled';
+import { FormCheckbox } from './ui/form-fields';
 import {
   Form,
   FormControl,
@@ -319,27 +320,11 @@ export function CyberArkInstanceForm({ open, onClose, onSuccess, instance }: Cyb
               />
             </div>
 
-            <FormField
-              control={form.control}
+            <FormCheckbox
+              form={form}
               name="concurrent_sessions"
-              render={({ field }) => (
-                <FormItem className="flex flex-row items-start space-x-3 space-y-0">
-                  <FormControl>
-                    <Checkbox
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                    />
-                  </FormControl>
-                  <div className="space-y-1 leading-none">
-                    <FormLabel>
-                      Allow concurrent sessions
-                    </FormLabel>
-                    <FormDescription>
-                      Enable up to 300 simultaneous connections to this CyberArk instance (default: on)
-                    </FormDescription>
-                  </div>
-                </FormItem>
-              )}
+              label="Allow concurrent sessions"
+              description="Enable up to 300 simultaneous connections to this CyberArk instance (default: on)"
             />
 
             {/* Test Result */}

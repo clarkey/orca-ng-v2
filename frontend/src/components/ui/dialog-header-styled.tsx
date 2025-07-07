@@ -1,5 +1,5 @@
 import * as React from "react";
-import { DialogHeader, DialogTitle, DialogDescription } from "./dialog";
+import { DialogTitle, DialogDescription } from "./dialog";
 import { cn } from "@/lib/utils";
 
 interface DialogHeaderStyledProps {
@@ -16,8 +16,8 @@ export function DialogHeaderStyled({
   children 
 }: DialogHeaderStyledProps) {
   return (
-    <div className={cn("bg-gray-50 border-b border-gray-200 px-6 py-4", className)}>
-      <DialogHeader>
+    <div className={cn("bg-gray-50 border-b border-gray-200 px-6 py-5", className)}>
+      <div className="flex flex-col space-y-1 text-center sm:text-left">
         <DialogTitle className="text-lg font-semibold text-gray-900">
           {title}
         </DialogTitle>
@@ -26,7 +26,7 @@ export function DialogHeaderStyled({
             {description}
           </DialogDescription>
         )}
-      </DialogHeader>
+      </div>
       {children}
     </div>
   );

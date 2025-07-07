@@ -5,7 +5,18 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 const labelVariants = cva(
-  "text-sm font-medium text-gray-700 leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 block"
+  "text-sm font-medium text-gray-700 leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 block",
+  {
+    variants: {
+      variant: {
+        default: "",
+        checkbox: "cursor-pointer",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+    },
+  }
 )
 
 const Label = React.forwardRef<
