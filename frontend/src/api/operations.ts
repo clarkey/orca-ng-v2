@@ -22,8 +22,11 @@ export interface Operation {
   type: OperationType;
   priority: Priority;
   status: Status;
+  payload?: any;
   result?: any;
   error_message?: string;
+  scheduled_at: string;
+  started_at?: string;
   created_at: string;
   completed_at?: string;
   created_by?: string;

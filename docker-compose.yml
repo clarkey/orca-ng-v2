@@ -28,6 +28,7 @@ services:
       - DATABASE_URL=postgres://orca:orca_dev_password@postgres:5432/orca_db?sslmode=disable
       - APP_ENV=development
       - SESSION_SECRET=dev-session-secret-change-in-production
+      - ENCRYPTION_KEY=dev-encryption-key-change-in-production
       - LOG_LEVEL=debug
     volumes:
       - ./backend:/app

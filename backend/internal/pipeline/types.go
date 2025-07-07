@@ -127,8 +127,11 @@ type OperationResponse struct {
 	Type         OperationType   `json:"type"`
 	Priority     Priority        `json:"priority"`
 	Status       Status          `json:"status"`
+	Payload      json.RawMessage `json:"payload,omitempty"`
 	Result       json.RawMessage `json:"result,omitempty"`
 	ErrorMessage *string         `json:"error_message,omitempty"`
+	ScheduledAt  time.Time       `json:"scheduled_at"`
+	StartedAt    *time.Time      `json:"started_at,omitempty"`
 	CreatedAt    time.Time       `json:"created_at"`
 	CompletedAt  *time.Time      `json:"completed_at,omitempty"`
 	CreatedBy    *string         `json:"created_by,omitempty"`

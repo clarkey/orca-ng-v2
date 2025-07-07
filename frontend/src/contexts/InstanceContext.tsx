@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import { cyberarkApi, CyberArkInstance as ApiCyberArkInstance } from '@/api/cyberark';
 
 interface CyberArkInstance {
   id: string;
@@ -31,15 +32,52 @@ interface InstanceProviderProps {
 }
 
 export function InstanceProvider({ children }: InstanceProviderProps) {
-  // Mock instances - in real app, these would come from API
-  const instances: CyberArkInstance[] = [
-    { id: 'all', name: 'All Instances', type: 'overview' },
-    { id: 'prod-us', name: 'Production US', type: 'instance', url: 'https://cyberark-us.example.com', status: 'connected' },
-    { id: 'prod-eu', name: 'Production EU', type: 'instance', url: 'https://cyberark-eu.example.com', status: 'connected' },
-    { id: 'dev', name: 'Development', type: 'instance', url: 'https://cyberark-dev.example.com', status: 'disconnected' },
-  ];
-
+  const [instances, setInstances] = useState<CyberArkInstance[]>([
+    { id: 'all', name: 'All Instances', type: 'overview' }
+  ]);
   const [currentInstanceId, setCurrentInstanceId] = useState<string>('all');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchInstances();
+  }, []);
+
+  const fetchInstances = async () => {
+    try {
+      const response = await cyberarkApi.listInstances(true); // Only get active instances
+      const apiInstances = response.instances || [];
+      
+      // Convert API instances to context format
+      const contextInstances: CyberArkInstance[] = [
+        { id: 'all', name: 'All Instances', type: 'overview' },
+        ...apiInstances.map(inst => ({
+          id: inst.id,
+          name: inst.name,
+          type: 'instance' as const,
+          url: inst.base_url,
+          status: getInstanceStatus(inst),
+        }))
+      ];
+      
+      setInstances(contextInstances);
+      
+      // If current instance is no longer in the list, reset to overview
+      if (currentInstanceId !== 'all' && !contextInstances.find(i => i.id === currentInstanceId)) {
+        setCurrentInstanceId('all');
+      }
+    } catch (error) {
+      console.error('Failed to fetch CyberArk instances:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getInstanceStatus = (instance: ApiCyberArkInstance): 'connected' | 'disconnected' | 'error' => {
+    if (!instance.last_test_at) {
+      return 'disconnected';
+    }
+    return instance.last_test_success ? 'connected' : 'error';
+  };
   
   const currentInstance = instances.find(inst => inst.id === currentInstanceId) || null;
   const isOverviewMode = currentInstance?.type === 'overview';

@@ -106,6 +106,16 @@ func main() {
 	// Initialize handlers
 	authHandler := handlers.NewAuthHandler(db, sessionTimeout)
 	operationsHandler := handlers.NewOperationsHandler(pipelineStore, db.SqlDB(), logrus.StandardLogger())
+	
+	// Get encryption key from environment or use a default for dev
+	encryptionKey := os.Getenv("ENCRYPTION_KEY")
+	if encryptionKey == "" {
+		encryptionKey = "dev-encryption-key-change-in-production"
+		if os.Getenv("APP_ENV") != "development" {
+			logrus.Fatal("ENCRYPTION_KEY environment variable must be set in production")
+		}
+	}
+	cyberarkHandler := handlers.NewCyberArkInstancesHandler(db, logrus.StandardLogger(), encryptionKey)
 
 	// API routes
 	api := router.Group("/api")
@@ -131,6 +141,15 @@ func main() {
 			// Pipeline management routes
 			protected.GET("/pipeline/metrics", operationsHandler.GetPipelineMetrics)
 			protected.GET("/pipeline/config", operationsHandler.GetPipelineConfig)
+			
+			// CyberArk instances routes
+			protected.GET("/cyberark/instances", cyberarkHandler.ListInstances)
+			protected.GET("/cyberark/instances/:id", cyberarkHandler.GetInstance)
+			protected.POST("/cyberark/instances", cyberarkHandler.CreateInstance)
+			protected.PUT("/cyberark/instances/:id", cyberarkHandler.UpdateInstance)
+			protected.DELETE("/cyberark/instances/:id", cyberarkHandler.DeleteInstance)
+			protected.POST("/cyberark/test-connection", cyberarkHandler.TestConnection)
+			protected.POST("/cyberark/instances/:id/test", cyberarkHandler.TestInstanceConnection)
 			
 			// Admin routes
 			admin := protected.Group("/admin")

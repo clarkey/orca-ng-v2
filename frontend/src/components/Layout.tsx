@@ -62,8 +62,7 @@ export function Layout() {
       <div className="w-64 bg-gray-50 border-r border-gray-200 flex flex-col">
         {/* Logo */}
         <div className="h-16 flex items-center px-6 border-b border-gray-200">
-          <OrcaIcon className="h-8 w-8 text-gray-900" />
-          <span className="ml-3 text-xl font-semibold text-gray-900">ORCA</span>
+          <OrcaIcon className="h-10 w-10 text-gray-900" />
         </div>
 
         {/* Instance Selector */}
@@ -193,29 +192,6 @@ export function Layout() {
           </div>
         </nav>
 
-        {/* User section */}
-        <div className="p-4 border-t border-gray-200">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">
-                <span className="text-sm font-medium text-gray-700">
-                  {user?.username?.[0]?.toUpperCase()}
-                </span>
-              </div>
-              <span className="ml-3 text-sm font-medium text-gray-700">
-                {user?.username}
-              </span>
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-gray-600 hover:text-gray-900"
-              onClick={handleLogout}
-            >
-              Log out
-            </Button>
-          </div>
-        </div>
       </div>
 
       {/* Main content */}
@@ -232,14 +208,37 @@ export function Layout() {
               return 'Dashboard';
             })()}
           </h1>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-gray-600 hover:text-gray-900 font-normal"
-            onClick={() => navigate('/support')}
-          >
-            Support
-          </Button>
+          <div className="flex items-center gap-4">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-gray-600 hover:text-gray-900 font-normal"
+              onClick={() => navigate('/support')}
+            >
+              Support
+            </Button>
+            <div className="h-8 w-px bg-gray-200" />
+            <div className="flex items-center gap-3">
+              <div className="flex items-center">
+                <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">
+                  <span className="text-sm font-medium text-gray-700">
+                    {user?.username?.[0]?.toUpperCase()}
+                  </span>
+                </div>
+                <span className="ml-2 text-sm font-medium text-gray-700">
+                  {user?.username}
+                </span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-gray-600 hover:text-gray-900"
+                onClick={handleLogout}
+              >
+                Log out
+              </Button>
+            </div>
+          </div>
         </header>
 
         {/* Page content */}

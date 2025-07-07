@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { OrcaIcon } from '@/components/OrcaIcon';
+import { LogoWithStroke } from '@/components/LogoWithStroke';
 
 export function Login() {
   const navigate = useNavigate();
@@ -34,7 +35,7 @@ export function Login() {
       <header className="bg-white">
         <div className="px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            <OrcaIcon className="h-8 w-8 text-gray-900" />
+            <OrcaIcon className="h-10 w-10 text-gray-900" />
             
             {/* Support Button */}
             <Button
@@ -52,8 +53,8 @@ export function Login() {
       {/* Main content */}
       <main className="flex flex-col items-center justify-center px-4 py-12 sm:px-6 lg:px-8" style={{ minHeight: 'calc(100vh - 4rem)' }}>
         <div className="w-full max-w-sm">
-          <div className="text-center mb-8">
-            <h2 className="text-3xl font-normal text-gray-900">Log in to ORCA</h2>
+          <div className="flex justify-center mb-8">
+            <LogoWithStroke className="h-32 w-auto" />
           </div>
 
           <div className="space-y-6">

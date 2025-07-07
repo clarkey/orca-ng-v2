@@ -1,5 +1,4 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import {
   useReactTable,
@@ -59,7 +58,6 @@ import {
   Clock,
   CheckCircle,
   XCircle,
-  AlertCircle,
   Loader2,
   Search,
   Calendar,
@@ -73,9 +71,9 @@ import {
   ChevronUp,
   ChevronDown
 } from 'lucide-react';
+import { OperationDetailsPanel } from '../components/OperationDetailsPanel';
 
 export default function OperationsTable() {
-  const navigate = useNavigate();
   const searchInputRef = React.useRef<HTMLInputElement>(null);
   const [data, setData] = useState<Operation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -83,6 +81,7 @@ export default function OperationsTable() {
   const [showNewOperationDialog, setShowNewOperationDialog] = useState(false);
   const [showStatsDialog, setShowStatsDialog] = useState(false);
   const [stats, setStats] = useState<any>(null);
+  const [selectedOperation, setSelectedOperation] = useState<Operation | null>(null);
   
   // Table state
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -189,7 +188,7 @@ export default function OperationsTable() {
       case 'failed':
         return <XCircle className="h-4 w-4 text-red-600" />;
       case 'cancelled':
-        return <AlertCircle className="h-4 w-4 text-orange-600" />;
+        return <Ban className="h-4 w-4 text-orange-600" />;
     }
   };
 
@@ -199,22 +198,26 @@ export default function OperationsTable() {
       {
         id: 'select',
         header: ({ table }) => (
-          <Checkbox
-            checked={
-              table.getIsAllPageRowsSelected() ||
-              (table.getIsSomePageRowsSelected() && "indeterminate")
-            }
-            onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-            aria-label="Select all"
-          />
+          <div className="flex items-center h-full">
+            <Checkbox
+              checked={
+                table.getIsAllPageRowsSelected() ||
+                (table.getIsSomePageRowsSelected() && "indeterminate")
+              }
+              onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+              aria-label="Select all"
+            />
+          </div>
         ),
         cell: ({ row }) => (
-          <Checkbox
-            checked={row.getIsSelected()}
-            onCheckedChange={(value) => row.toggleSelected(!!value)}
-            aria-label="Select row"
-            onClick={(e) => e.stopPropagation()}
-          />
+          <div className="flex items-center h-full">
+            <Checkbox
+              checked={row.getIsSelected()}
+              onCheckedChange={(value) => row.toggleSelected(!!value)}
+              aria-label="Select row"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
         ),
         size: 40,
       },
@@ -223,25 +226,36 @@ export default function OperationsTable() {
         header: '',
         size: 20,
         cell: ({ row }) => {
-          const statusDotColors: Record<Status, string> = {
-            pending: 'bg-gray-400',
-            processing: 'bg-blue-500 animate-pulse',
-            completed: 'bg-green-500',
-            failed: 'bg-red-500',
-            cancelled: 'bg-orange-500',
+          const statusIcons: Record<Status, { icon: React.ReactNode; color: string }> = {
+            pending: { 
+              icon: <Clock className="h-3.5 w-3.5" />, 
+              color: 'text-gray-400' 
+            },
+            processing: { 
+              icon: <Loader2 className="h-3.5 w-3.5 animate-spin" />, 
+              color: 'text-blue-500' 
+            },
+            completed: { 
+              icon: <CheckCircle className="h-3.5 w-3.5" />, 
+              color: 'text-green-600' 
+            },
+            failed: { 
+              icon: <XCircle className="h-3.5 w-3.5" />, 
+              color: 'text-red-500' 
+            },
+            cancelled: { 
+              icon: <Ban className="h-3.5 w-3.5" />, 
+              color: 'text-orange-500' 
+            },
           };
           
-          const statusTooltips: Record<Status, string> = {
-            pending: 'Pending',
-            processing: 'Processing',
-            completed: 'Completed',
-            failed: 'Failed',
-            cancelled: 'Cancelled',
-          };
+          const status = statusIcons[row.original.status];
           
           return (
-            <div className="flex items-center justify-center" title={statusTooltips[row.original.status]}>
-              <span className={`w-2 h-2 rounded-full ${statusDotColors[row.original.status]}`} />
+            <div className="flex items-center justify-center" title={row.original.status}>
+              <span className={status.color}>
+                {status.icon}
+              </span>
             </div>
           );
         },
@@ -530,7 +544,7 @@ export default function OperationsTable() {
   };
 
   const handleRowClick = (operation: Operation) => {
-    navigate(`/operations/${operation.id}`);
+    setSelectedOperation(operation);
   };
 
   // Handle bulk cancel
@@ -665,7 +679,7 @@ export default function OperationsTable() {
                 <Download className="h-4 w-4 mr-2" />
                 Export
               </Button>
-              <Button className="bg-slate-700 hover:bg-slate-800 text-white" onClick={() => setShowNewOperationDialog(true)}>
+              <Button onClick={() => setShowNewOperationDialog(true)}>
                 <Plus className="h-4 w-4 mr-2" />
                 New Operation
               </Button>
@@ -722,7 +736,7 @@ export default function OperationsTable() {
                 </SelectItem>
                 <SelectItem value="cancelled">
                   <div className="flex items-center gap-2">
-                    <AlertCircle className="h-4 w-4 text-orange-600" />
+                    <Ban className="h-4 w-4 text-orange-600" />
                     Cancelled
                   </div>
                 </SelectItem>
@@ -1214,6 +1228,13 @@ export default function OperationsTable() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Operation Details Panel */}
+      <OperationDetailsPanel 
+        operation={selectedOperation} 
+        onClose={() => setSelectedOperation(null)}
+        onUpdate={fetchData}
+      />
     </PageContainer>
   );
 }
