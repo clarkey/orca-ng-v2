@@ -113,8 +113,11 @@ export function Login() {
           <div className="bg-white rounded shadow-2xl ring-1 ring-black/5 p-8" style={{boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.4), 0 0 25px rgba(0, 0, 0, 0.15)'}}>
               {/* Logo on the left */}
               <div className="mb-8">
-                <LogoWithStroke className="h-20 w-auto text-gray-700" />
+                <LogoWithStroke className="h-16 w-auto text-gray-700" />
               </div>
+              
+              {/* Divider line */}
+              <div className="w-full border-t border-gray-200 mb-8" />
               
               <div className="space-y-6">
                 <Form {...form}>
