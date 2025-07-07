@@ -42,10 +42,8 @@ export function Login() {
   });
 
   useEffect(() => {
-    // Select a random wallpaper
-    const wallpaperNumber = Math.floor(Math.random() * 5) + 1;
-    const extension = wallpaperNumber === 5 ? 'JPG' : 'jpg';
-    const imagePath = `/wallpapers/${wallpaperNumber}.${extension}`;
+    // Use wallpaper 2.jpg
+    const imagePath = `/wallpapers/2.jpg`;
     
     // Preload the image
     const img = new Image();
@@ -72,9 +70,12 @@ export function Login() {
 
   return (
     <div className="relative min-h-screen overflow-hidden">
+      {/* Fallback gradient while image loads */}
+      <div className="absolute inset-0 z-0 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900" />
+      
       {/* Background Image with Overlay */}
       <div 
-        className={`absolute inset-0 z-0 transition-opacity duration-1000 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+        className={`absolute inset-0 z-10 transition-opacity duration-[1500ms] ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
         style={{
           backgroundImage: backgroundImage ? `url(${backgroundImage})` : '',
           backgroundSize: 'cover',
@@ -83,14 +84,11 @@ export function Login() {
         }}
       >
         {/* Dark overlay for better readability */}
-        <div className="absolute inset-0 bg-black/40" />
+        <div className="absolute inset-0 bg-black/30" />
       </div>
-      
-      {/* Fallback gradient while image loads */}
-      <div className="absolute inset-0 z-0 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900" />
 
       {/* Header */}
-      <header className="relative z-10">
+      <header className="relative z-20">
         <div className="px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <OrcaIcon className="h-10 w-10 text-white drop-shadow-lg" />
@@ -109,94 +107,99 @@ export function Login() {
       </header>
 
       {/* Main content */}
-      <main className="relative z-10 flex flex-col items-center justify-center px-4 py-12 sm:px-6 lg:px-8" style={{ minHeight: 'calc(100vh - 4rem)' }}>
-        <div className="w-full max-w-sm">
-          {/* Glass card effect */}
-          <div className="backdrop-blur-md bg-white/10 border border-white/20 rounded-2xl shadow-2xl p-8">
-            <div className="flex justify-center mb-8">
-              <LogoWithStroke className="h-32 w-auto drop-shadow-lg" />
-            </div>
-
-            <div className="space-y-6">
-              <Button
-                type="button"
-                onClick={() => window.location.href = '/auth/entra'}
-                className="w-full h-11 bg-white/90 hover:bg-white text-gray-900 font-medium shadow-lg transition-all hover:shadow-xl"
-                disabled={isLoading}
-              >
-                Login with Entra ID
-              </Button>
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-white/30" />
-                </div>
-                <div className="relative flex justify-center text-sm">
-                  <span className="px-2 bg-transparent text-white/70">or</span>
-                </div>
+      <main className="relative z-20 flex flex-col items-center justify-center px-4 py-12 sm:px-6 lg:px-8" style={{ minHeight: 'calc(100vh - 4rem)' }}>
+        <div className="w-full max-w-md">
+          {/* Form card */}
+          <div className="bg-white rounded shadow-2xl ring-1 ring-black/5 p-8" style={{boxShadow: '0 20px 50px -12px rgba(0, 0, 0, 0.25), 0 0 15px rgba(0, 0, 0, 0.08)'}}>
+              {/* Logo on the left */}
+              <div className="mb-8">
+                <LogoWithStroke className="h-20 w-auto text-gray-700" />
               </div>
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
-                  {error && (
-                    <Alert variant="destructive" className="bg-red-500/20 border-red-500/30 text-white">
-                      <AlertCircle className="h-4 w-4" />
-                      <AlertDescription>{error}</AlertDescription>
-                    </Alert>
-                  )}
-                  
-                  <FormField
-                    control={form.control}
-                    name="username"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormControl>
-                          <Input
-                            placeholder="Username"
-                            autoComplete="username"
-                            className="h-11 bg-white/10 border-white/20 text-white placeholder:text-white/50 focus:bg-white/20 focus:border-white/40 focus-visible:ring-white/30"
-                            disabled={isLoading}
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage className="text-white/90" />
-                      </FormItem>
+              
+              <div className="space-y-6">
+                <Form {...form}>
+                  <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+                    {error && (
+                      <Alert variant="destructive" className="bg-red-50 border-red-200">
+                        <AlertCircle className="h-4 w-4" />
+                        <AlertDescription>{error}</AlertDescription>
+                      </Alert>
                     )}
-                  />
-                  
-                  <FormField
-                    control={form.control}
-                    name="password"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormControl>
-                          <Input
-                            type="password"
-                            placeholder="Password"
-                            autoComplete="current-password"
-                            className="h-11 bg-white/10 border-white/20 text-white placeholder:text-white/50 focus:bg-white/20 focus:border-white/40 focus-visible:ring-white/30"
-                            disabled={isLoading}
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage className="text-white/90" />
-                      </FormItem>
-                    )}
-                  />
-                  
-                  <Button
-                    type="submit"
-                    className="w-full h-11 bg-white/10 hover:bg-white/20 text-white font-medium border border-white/20 shadow-lg transition-all hover:shadow-xl"
-                    disabled={isLoading}
-                  >
-                    {isLoading ? 'Logging in...' : 'Log in with ORCA'}
-                  </Button>
-                </form>
-              </Form>
-            </div>
+                    
+                    <FormField
+                      control={form.control}
+                      name="username"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormControl>
+                            <Input
+                              placeholder="Username"
+                              autoComplete="username"
+                              className="h-12 bg-gray-50 border-gray-200 text-gray-900 placeholder:text-gray-400 focus:bg-white focus:border-gray-400 rounded"
+                              disabled={isLoading}
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    
+                    <FormField
+                      control={form.control}
+                      name="password"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormControl>
+                            <Input
+                              type="password"
+                              placeholder="Password"
+                              autoComplete="current-password"
+                              className="h-12 bg-gray-50 border-gray-200 text-gray-900 placeholder:text-gray-400 focus:bg-white focus:border-gray-400 rounded"
+                              disabled={isLoading}
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    
+                    <Button
+                      type="submit"
+                      className="w-full h-12 bg-gray-700 hover:bg-gray-800 text-white font-medium rounded transition-all transform hover:scale-[1.02]"
+                      disabled={isLoading}
+                    >
+                      {isLoading ? 'Logging in...' : 'Log in with ORCA'}
+                    </Button>
+                  </form>
+                </Form>
+                
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-gray-200" />
+                  </div>
+                  <div className="relative flex justify-center text-sm">
+                    <span className="px-3 bg-white text-gray-500">or continue with</span>
+                  </div>
+                </div>
+                
+                <Button
+                  type="button"
+                  onClick={() => window.location.href = '/auth/entra'}
+                  className="w-full h-12 bg-white hover:bg-gray-50 text-gray-700 font-medium border-2 border-gray-700 rounded transition-all transform hover:scale-[1.02]"
+                  disabled={isLoading}
+                >
+                  Log in with Entra ID
+                </Button>
+              </div>
           </div>
 
-          <p className="text-center text-xs text-white/60 mt-8">
-            © 2025 Privilent. All rights reserved.
-          </p>
+          {/* Footer info */}
+          <div className="flex justify-between items-center mt-6 px-4 text-xs text-white/80">
+            <p className="drop-shadow-lg">© 2025 Privilent. All rights reserved.</p>
+            <p className="drop-shadow-lg">ORCA v2.0.0 • Build 2025.01</p>
+          </div>
         </div>
       </main>
     </div>
