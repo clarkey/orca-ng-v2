@@ -1,5 +1,16 @@
 @import 'tailwindcss';
 
+/* Override Tailwind's button cursor reset and remove transitions */
+@layer base {
+  button,
+  [type='button'],
+  [type='reset'],
+  [type='submit'] {
+    cursor: pointer;
+    transition: none;
+  }
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;
@@ -56,3 +67,4 @@
     color: hsl(var(--foreground));
   }
 }
+

@@ -22,6 +22,7 @@ import {
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { PageContainer } from '../components/PageContainer';
+import { PageHeader } from '../components/PageHeader';
 import { Input } from '../components/ui/input';
 import { 
   Select,
@@ -450,6 +451,25 @@ export default function OperationsTable() {
 
   return (
     <PageContainer>
+      <PageHeader
+        title="Operations Queue"
+        description="Monitor and manage CyberArk operations and tasks"
+        actions={
+          <Button 
+            onClick={fetchData} 
+            disabled={loading}
+            variant="outline"
+          >
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            <span className="ml-2">Refresh</span>
+          </Button>
+        }
+      />
+
       {/* Data Table */}
       <Card className="overflow-hidden">
         <CardContent className="p-0">

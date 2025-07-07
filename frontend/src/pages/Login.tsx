@@ -110,14 +110,11 @@ export function Login() {
       <main className="relative z-20 flex flex-col items-center justify-center px-4 py-12 sm:px-6 lg:px-8" style={{ minHeight: 'calc(100vh - 4rem)' }}>
         <div className="w-full max-w-md">
           {/* Form card */}
-          <div className="bg-white rounded shadow-2xl ring-1 ring-black/5 p-8" style={{boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.4), 0 0 25px rgba(0, 0, 0, 0.15)'}}>
+          <div className="bg-white rounded border border-gray-200 p-8">
               {/* Logo on the left */}
               <div className="mb-8">
                 <LogoWithStroke className="h-16 w-auto text-gray-700" />
               </div>
-              
-              {/* Divider line */}
-              <div className="w-full border-t border-gray-200 mb-8" />
               
               <div className="space-y-6">
                 <Form {...form}>
@@ -170,7 +167,7 @@ export function Login() {
                     
                     <Button
                       type="submit"
-                      className="w-full h-12 bg-gray-700 hover:bg-gray-800 text-white font-medium rounded transition-all transform hover:scale-[1.02]"
+                      className="w-full h-12 bg-gray-700 hover:bg-gray-800 text-white font-medium rounded"
                       disabled={isLoading}
                     >
                       {isLoading ? 'Logging in...' : 'Log in with ORCA'}
@@ -183,14 +180,14 @@ export function Login() {
                     <div className="w-full border-t border-gray-200" />
                   </div>
                   <div className="relative flex justify-center text-sm">
-                    <span className="px-3 bg-white text-gray-500">or continue with</span>
+                    <span className="px-3 bg-white text-gray-500">or</span>
                   </div>
                 </div>
                 
                 <Button
                   type="button"
                   onClick={() => window.location.href = '/auth/entra'}
-                  className="w-full h-12 bg-white hover:bg-gray-50 text-gray-700 font-medium border-2 border-gray-700 rounded transition-all transform hover:scale-[1.02]"
+                  className="w-full h-12 bg-white hover:bg-gray-50 text-gray-700 font-medium border-2 border-gray-700 rounded"
                   disabled={isLoading}
                 >
                   Log in with Entra ID

@@ -10,7 +10,7 @@ interface PageContainerProps {
 export function PageContainer({ 
   children, 
   className,
-  maxWidth = '7xl' 
+  maxWidth = 'full' 
 }: PageContainerProps) {
   const maxWidthClasses = {
     'sm': 'max-w-sm',
@@ -23,9 +23,9 @@ export function PageContainer({
   };
 
   return (
-    <div className={cn("p-6", className)}>
+    <div className={cn("px-6 py-6", className)}>
       <div className={cn(
-        "mx-auto space-y-6",
+        "space-y-6",
         maxWidthClasses[maxWidth]
       )}>
         {children}

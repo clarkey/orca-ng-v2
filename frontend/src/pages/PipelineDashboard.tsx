@@ -8,6 +8,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Progress } from '../components/ui/progress';
 import { PageContainer } from '../components/PageContainer';
+import { PageHeader } from '../components/PageHeader';
 import { 
   Activity,
   Zap,
@@ -65,15 +66,21 @@ export default function PipelineDashboard() {
 
   return (
     <PageContainer>
-      <div className="flex justify-end gap-2">
-        <Button variant="outline" onClick={fetchData}>
-          <RefreshCw className="h-4 w-4" />
-        </Button>
-        <Button variant="outline">
-          <Settings className="h-4 w-4 mr-2" />
-          Configure
-        </Button>
-      </div>
+      <PageHeader
+        title="Queue Monitoring"
+        description="Monitor and manage operation processing queues"
+        actions={
+          <>
+            <Button variant="outline" onClick={fetchData}>
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+            <Button variant="outline">
+              <Settings className="h-4 w-4 mr-2" />
+              Configure
+            </Button>
+          </>
+        }
+      />
 
       {/* Overview Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
