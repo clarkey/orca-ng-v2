@@ -102,7 +102,7 @@ export function Layout() {
                   <Link
                     to={item.href}
                     className={cn(
-                      "flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                      "flex items-center px-3 py-2 text-sm font-medium rounded transition-colors",
                       location.pathname === item.href
                         ? "bg-gray-200 text-gray-900"
                         : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
@@ -127,7 +127,7 @@ export function Layout() {
                   <Link
                     to={item.href}
                     className={cn(
-                      "flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                      "flex items-center px-3 py-2 text-sm font-medium rounded transition-colors",
                       location.pathname === item.href
                         ? "bg-gray-200 text-gray-900"
                         : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
@@ -152,7 +152,7 @@ export function Layout() {
                   <Link
                     to={item.href}
                     className={cn(
-                      "flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                      "flex items-center px-3 py-2 text-sm font-medium rounded transition-colors",
                       location.pathname === item.href
                         ? "bg-gray-200 text-gray-900"
                         : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
@@ -177,7 +177,7 @@ export function Layout() {
                   <Link
                     to={item.href}
                     className={cn(
-                      "flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                      "flex items-center px-3 py-2 text-sm font-medium rounded transition-colors",
                       location.pathname === item.href
                         ? "bg-gray-200 text-gray-900"
                         : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"

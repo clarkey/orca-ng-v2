@@ -13,7 +13,7 @@ export function Dashboard() {
     <PageContainer>
           {/* Instance Header */}
           {!isOverviewMode && currentInstance && (
-            <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <div className="mb-6 p-4 bg-gray-50 rounded border border-gray-200">
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-lg font-medium text-gray-900">{currentInstance.name}</h2>

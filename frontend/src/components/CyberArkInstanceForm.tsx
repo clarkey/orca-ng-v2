@@ -8,11 +8,9 @@ import { Checkbox } from './ui/checkbox';
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
-  DialogHeader,
-  DialogTitle,
 } from './ui/dialog';
+import { DialogHeaderStyled } from './ui/dialog-header-styled';
 import {
   Form,
   FormControl,
@@ -223,16 +221,10 @@ export function CyberArkInstanceForm({ open, onClose, onSuccess, instance }: Cyb
   return (
     <Dialog open={open} onOpenChange={() => !isSubmitting && onClose()}>
       <DialogContent className="max-w-2xl p-0 overflow-hidden">
-        <div className="bg-gray-50 border-b border-gray-200 px-6 py-4">
-          <DialogHeader>
-            <DialogTitle className="text-lg font-semibold text-gray-900">
-              {instance ? 'Edit CyberArk Instance' : 'Add CyberArk Instance'}
-            </DialogTitle>
-            <DialogDescription className="text-sm text-gray-600">
-              Configure a CyberArk PVWA instance connection. The connection will be tested before saving.
-            </DialogDescription>
-          </DialogHeader>
-        </div>
+        <DialogHeaderStyled 
+          title={instance ? 'Edit CyberArk Instance' : 'Add CyberArk Instance'}
+          description="Configure a CyberArk PVWA instance connection. The connection will be tested before saving."
+        />
 
         <div className="px-6 pb-6 pt-2">
           <Form {...form}>
@@ -353,7 +345,7 @@ export function CyberArkInstanceForm({ open, onClose, onSuccess, instance }: Cyb
             {/* Test Result */}
             {testResult && (
               <div className={cn(
-                "rounded-md border p-4",
+                "rounded border p-4",
                 testResult.success 
                   ? "border-green-200 bg-green-50/50" 
                   : "border-gray-200 bg-gray-50"

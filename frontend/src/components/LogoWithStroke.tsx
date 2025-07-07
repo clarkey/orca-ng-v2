@@ -4,13 +4,13 @@ export function LogoWithStroke({ className }: { className?: string }) {
       <style>
         {`
           .text-path {
-            fill: #1e293b;
-            stroke: #1e293b;
-            stroke-width: 4;
+            fill: currentColor;
+            stroke: currentColor;
+            stroke-width: 6;
             paint-order: stroke;
           }
           .icon-path {
-            fill: #1e293b;
+            fill: currentColor;
           }
         `}
       </style>

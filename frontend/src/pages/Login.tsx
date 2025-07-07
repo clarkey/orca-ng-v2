@@ -110,7 +110,7 @@ export function Login() {
       <main className="relative z-20 flex flex-col items-center justify-center px-4 py-12 sm:px-6 lg:px-8" style={{ minHeight: 'calc(100vh - 4rem)' }}>
         <div className="w-full max-w-md">
           {/* Form card */}
-          <div className="bg-white rounded shadow-2xl ring-1 ring-black/5 p-8" style={{boxShadow: '0 20px 50px -12px rgba(0, 0, 0, 0.25), 0 0 15px rgba(0, 0, 0, 0.08)'}}>
+          <div className="bg-white rounded shadow-2xl ring-1 ring-black/5 p-8" style={{boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.4), 0 0 25px rgba(0, 0, 0, 0.15)'}}>
               {/* Logo on the left */}
               <div className="mb-8">
                 <LogoWithStroke className="h-20 w-auto text-gray-700" />

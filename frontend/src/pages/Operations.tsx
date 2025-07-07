@@ -20,14 +20,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '../components/ui/dialog';
 import { 
   
   RefreshCw, 
@@ -125,7 +117,7 @@ export default function Operations() {
               {operations.map((operation) => (
                 <div
                   key={operation.id}
-                  className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+                  className="flex items-center justify-between p-4 border rounded hover:bg-gray-50 cursor-pointer transition-colors"
                   onClick={() => navigate(`/operations/${operation.id}`)}
                 >
                   <div className="flex items-center gap-4">

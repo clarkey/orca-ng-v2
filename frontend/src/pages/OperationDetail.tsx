@@ -181,7 +181,7 @@ export default function OperationDetail() {
 
           {/* Error Message */}
           {operation.error_message && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <div className="bg-red-50 border border-red-200 rounded p-4">
               <p className="text-sm font-medium text-red-800 mb-1">Error</p>
               <p className="text-sm text-red-700">{operation.error_message}</p>
             </div>
@@ -191,7 +191,7 @@ export default function OperationDetail() {
           {operation.result && (
             <div>
               <p className="text-sm font-medium text-gray-500 mb-2">Result</p>
-              <pre className="bg-gray-50 rounded-lg p-4 text-sm overflow-auto">
+              <pre className="bg-gray-50 rounded p-4 text-sm overflow-auto">
                 {JSON.stringify(operation.result, null, 2)}
               </pre>
             </div>
