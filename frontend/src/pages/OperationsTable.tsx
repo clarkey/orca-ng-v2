@@ -450,13 +450,6 @@ export default function OperationsTable() {
 
   return (
     <PageContainer>
-      {/* Actions Bar */}
-      <div className="flex justify-end gap-2">
-        <Button variant="outline" size="icon" onClick={fetchData} title="Refresh">
-          <RefreshCw className="h-4 w-4" />
-        </Button>
-      </div>
-
       {/* Data Table */}
       <Card className="overflow-hidden">
         <CardContent className="p-0">

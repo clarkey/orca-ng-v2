@@ -59,7 +59,7 @@ export function Layout() {
   return (
     <div className="min-h-screen bg-white flex">
       {/* Sidebar */}
-      <div className="w-64 bg-gray-50 border-r border-gray-200 flex flex-col">
+      <div className="fixed left-0 top-0 h-full w-64 bg-gray-50 border-r border-gray-200 flex flex-col z-10">
         {/* Logo */}
         <div className="h-16 flex items-center px-6 border-b border-gray-200">
           <OrcaIcon className="h-10 w-10 text-gray-900" />
@@ -93,7 +93,7 @@ export function Layout() {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 px-4 py-4 space-y-6">
+        <nav className="flex-1 px-4 py-4 space-y-6 overflow-y-auto">
           {/* Main */}
           <div>
             <ul className="space-y-1">
@@ -195,7 +195,7 @@ export function Layout() {
       </div>
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col ml-64">
         {/* Top bar */}
         <header className="h-16 bg-white border-b border-gray-200 px-6 flex items-center justify-between">
           <h1 className="text-xl font-medium text-gray-900">
