@@ -1,4 +1,4 @@
-import React from 'react';
+import { useState } from 'react';
 import { format, formatDistanceToNow, formatDistance } from 'date-fns';
 import { Operation, getOperationTypeLabel, operationsApi } from '../api/operations';
 import { Button } from './ui/button';
@@ -8,7 +8,7 @@ import {
   DialogFooter,
 } from './ui/dialog';
 import { DialogHeaderStyled } from './ui/dialog-header-styled';
-import { Clock, Calendar, AlertCircle, Ban, RotateCcw } from 'lucide-react';
+import { Clock, AlertCircle, Ban, RotateCcw } from 'lucide-react';
 
 interface OperationDetailsPanelProps {
   operation: Operation | null;
@@ -17,7 +17,7 @@ interface OperationDetailsPanelProps {
 }
 
 export function OperationDetailsPanel({ operation, onClose, onUpdate }: OperationDetailsPanelProps) {
-  const [isCancelling, setIsCancelling] = React.useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   
   if (!operation) return null;
 

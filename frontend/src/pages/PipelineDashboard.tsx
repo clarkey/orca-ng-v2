@@ -1,10 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { 
-  PipelineMetrics, 
-  PipelineConfig,
-  operationsApi,
-  getOperationTypeLabel
-} from '../api/operations';
+import { getOperationTypeLabel, OperationType } from '../api/operations';
+import { usePipelineData } from '@/hooks/usePipelineMetrics';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Progress } from '../components/ui/progress';
 import { PageContainer } from '../components/PageContainer';
@@ -22,38 +17,15 @@ import {
 import { Button } from '../components/ui/button';
 
 export default function PipelineDashboard() {
-  const [metrics, setMetrics] = useState<PipelineMetrics | null>(null);
-  const [config, setConfig] = useState<PipelineConfig | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { metrics, config, isLoading, refetch } = usePipelineData(5000); // 5 second refresh
 
-  const fetchData = async () => {
-    try {
-      const [metricsData, configData] = await Promise.all([
-        operationsApi.getMetrics(),
-        operationsApi.getConfig()
-      ]);
-      setMetrics(metricsData);
-      setConfig(configData);
-    } catch (error) {
-      console.error('Failed to fetch pipeline data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
-    
-    // Auto-refresh every 5 seconds
-    const interval = setInterval(fetchData, 5000);
-    return () => clearInterval(interval);
-  }, []);
-
-  if (loading || !metrics || !config) {
+  if (isLoading || !metrics || !config) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin" />
-      </div>
+      <PageContainer>
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin" />
+        </div>
+      </PageContainer>
     );
   }
 
@@ -62,7 +34,7 @@ export default function PipelineDashboard() {
   const totalCompleted = Object.values(metrics.completed_count || {}).reduce((a, b) => a + b, 0);
   const totalFailed = Object.values(metrics.failed_count || {}).reduce((a, b) => a + b, 0);
 
-  const priorityOrder = ['high', 'medium', 'normal', 'low'] as const;
+  const priorityOrder = ['high', 'normal', 'low'] as const;
 
   return (
     <PageContainer>
@@ -71,7 +43,7 @@ export default function PipelineDashboard() {
         description="Monitor and manage operation processing queues"
         actions={
           <>
-            <Button variant="outline" onClick={fetchData}>
+            <Button variant="outline" onClick={() => refetch()}>
               <RefreshCw className="h-4 w-4" />
             </Button>
             <Button variant="outline">
@@ -161,7 +133,6 @@ export default function PipelineDashboard() {
                   <div className="flex items-center gap-2">
                     <Zap className={`h-4 w-4 ${
                       priority === 'high' ? 'text-red-600' :
-                      priority === 'medium' ? 'text-yellow-600' :
                       priority === 'normal' ? 'text-blue-600' :
                       'text-gray-600'
                     }`} />
@@ -187,16 +158,16 @@ export default function PipelineDashboard() {
           <CardContent>
             <div className="space-y-3">
               {Object.entries(metrics.completed_count || {}).map(([type, count]) => {
-                const failed = metrics.failed_count?.[type as any] || 0;
+                const failed = metrics.failed_count?.[type as OperationType] || 0;
                 const total = count + failed;
                 const successRate = total > 0 ? (count / total) * 100 : 0;
-                const avgTime = metrics.avg_processing_time?.[type as any] || 0;
+                const avgTime = metrics.avg_processing_time?.[type as OperationType] || 0;
 
                 return (
                   <div key={type} className="space-y-1">
                     <div className="flex justify-between items-center">
                       <span className="text-sm font-medium">
-                        {getOperationTypeLabel(type as any)}
+                        {getOperationTypeLabel(type as OperationType)}
                       </span>
                       <span className="text-sm text-gray-500">
                         {count} completed

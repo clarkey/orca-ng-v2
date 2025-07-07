@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { format } from 'date-fns';
 import {
   useReactTable,
@@ -14,11 +14,10 @@ import {
 import { 
   Operation, 
   OperationType,
-  Priority, 
   Status, 
-  operationsApi, 
   getOperationTypeLabel
 } from '../api/operations';
+import { useOperations, useCancelOperation } from '@/hooks/useOperations';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { PageContainer } from '../components/PageContainer';
@@ -55,72 +54,48 @@ import {
 } from 'lucide-react';
 import { OperationDetailsPanel } from '../components/OperationDetailsPanel';
 
+const STORAGE_KEY_PAGE_SIZE = 'orca-operations-page-size';
+
 export default function OperationsTable() {
-  const [data, setData] = useState<Operation[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [totalCount, setTotalCount] = useState(0);
   const [selectedOperation, setSelectedOperation] = useState<Operation | null>(null);
   
   // Table state
   const [sorting, setSorting] = useState<SortingState>([]);
-  const [pagination, setPagination] = useState<PaginationState>({
-    pageIndex: 0,
-    pageSize: 50,
+  
+  // Initialize pagination with saved page size
+  const [pagination, setPagination] = useState<PaginationState>(() => {
+    const savedPageSize = localStorage.getItem(STORAGE_KEY_PAGE_SIZE);
+    return {
+      pageIndex: 0,
+      pageSize: savedPageSize ? parseInt(savedPageSize, 10) : 50,
+    };
   });
 
-  // Fetch data
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params: any = {
-        page: pagination.pageIndex + 1,
-        page_size: pagination.pageSize,
-      };
-      
-      // Add sorting parameters
-      if (sorting.length > 0) {
-        params.sort_by = sorting[0].id;
-        params.sort_order = sorting[0].desc ? 'desc' : 'asc';
-      }
-      
-      const response = await operationsApi.list(params);
-      setData(response.operations);
-      setTotalCount(response.pagination.total_count);
-    } catch (error) {
-      console.error('Failed to fetch operations:', error);
-    } finally {
-      setLoading(false);
+  // Build query params
+  const queryParams = useMemo(() => {
+    const params: any = {
+      page: pagination.pageIndex + 1,
+      page_size: pagination.pageSize,
+    };
+    
+    // Add sorting parameters
+    if (sorting.length > 0) {
+      params.sort_by = sorting[0].id;
+      params.sort_order = sorting[0].desc ? 'desc' : 'asc';
     }
+    
+    return params;
   }, [pagination, sorting]);
 
-  // Fetch data when filters change
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  // Fetch operations using React Query with next page prefetching
+  const { data: response, isLoading, refetch, isFetching, isPreviousData } = useOperations(queryParams, { prefetchNext: true });
+  const cancelMutation = useCancelOperation();
+  
+  const data = response?.operations || [];
+  const totalCount = response?.pagination?.total_count || 0;
+  const pageCount = response?.pagination?.total_pages || 0;
 
-  // Auto-refresh every 10 seconds
-  useEffect(() => {
-    const interval = setInterval(() => {
-      fetchData();
-    }, 10000);
-    
-    return () => clearInterval(interval);
-  }, [fetchData]);
 
-  const getStatusIcon = (status: Status) => {
-    switch (status) {
-      case 'pending':
-        return <Clock className="h-4 w-4" />;
-      case 'processing':
-        return <Loader2 className="h-4 w-4 animate-spin" />;
-      case 'completed':
-        return <CheckCircle className="h-4 w-4 text-green-600" />;
-      case 'failed':
-        return <XCircle className="h-4 w-4 text-red-600" />;
-      case 'cancelled':
-        return <Ban className="h-4 w-4 text-orange-600" />;
-    }
-  };
 
   // Define columns
   const columns = useMemo<ColumnDef<Operation>[]>(
@@ -413,7 +388,7 @@ export default function OperationsTable() {
   const table = useReactTable({
     data,
     columns,
-    pageCount: Math.max(1, Math.ceil(totalCount / pagination.pageSize)),
+    pageCount: pageCount || Math.max(1, Math.ceil(totalCount / pagination.pageSize)),
     state: {
       sorting,
       pagination,
@@ -430,8 +405,8 @@ export default function OperationsTable() {
 
   const handleCancelOperation = async (id: string) => {
     try {
-      await operationsApi.cancel(id);
-      fetchData();
+      await cancelMutation.mutateAsync(id);
+      refetch();
     } catch (error) {
       console.error('Failed to cancel operation:', error);
     }
@@ -441,7 +416,7 @@ export default function OperationsTable() {
     setSelectedOperation(operation);
   };
 
-  if (loading && data.length === 0) {
+  if (isLoading && data.length === 0) {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="h-8 w-8 animate-spin" />
@@ -456,11 +431,11 @@ export default function OperationsTable() {
         description="Monitor and manage CyberArk operations and tasks"
         actions={
           <Button 
-            onClick={fetchData} 
-            disabled={loading}
+            onClick={() => refetch()} 
+            disabled={isLoading}
             variant="outline"
           >
-            {loading ? (
+            {isLoading ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <RefreshCw className="h-4 w-4" />
@@ -472,7 +447,13 @@ export default function OperationsTable() {
 
       {/* Data Table */}
       <Card className="overflow-hidden">
-        <CardContent className="p-0">
+        <CardContent className="p-0 relative">
+          {/* Loading overlay for pagination changes */}
+          {isFetching && !isLoading && (
+            <div className="absolute inset-0 bg-white/50 backdrop-blur-sm z-10 flex items-center justify-center">
+              <Loader2 className="h-6 w-6 animate-spin text-gray-600" />
+            </div>
+          )}
           <Table>
               <TableHeader>
                 {table.getHeaderGroups().map((headerGroup) => (
@@ -530,7 +511,7 @@ export default function OperationsTable() {
                 variant="outline"
                 size="sm"
                 onClick={() => table.setPageIndex(0)}
-                disabled={!table.getCanPreviousPage()}
+                disabled={!table.getCanPreviousPage() || isFetching}
               >
                 <ChevronsLeft className="h-4 w-4" />
               </Button>
@@ -538,7 +519,7 @@ export default function OperationsTable() {
                 variant="outline"
                 size="sm"
                 onClick={() => table.previousPage()}
-                disabled={!table.getCanPreviousPage()}
+                disabled={!table.getCanPreviousPage() || isFetching}
               >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
@@ -555,15 +536,19 @@ export default function OperationsTable() {
                   className="w-16 text-center"
                   min={1}
                   max={table.getPageCount()}
+                  disabled={isFetching}
                 />
                 <span className="text-sm">of {table.getPageCount()}</span>
+                {isPreviousData && (
+                  <span className="text-xs text-gray-500 ml-2">(Stale)</span>
+                )}
               </div>
               
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => table.nextPage()}
-                disabled={!table.getCanNextPage()}
+                disabled={!table.getCanNextPage() || isFetching}
               >
                 <ChevronRight className="h-4 w-4" />
               </Button>
@@ -571,19 +556,24 @@ export default function OperationsTable() {
                 variant="outline"
                 size="sm"
                 onClick={() => table.setPageIndex(table.getPageCount() - 1)}
-                disabled={!table.getCanNextPage()}
+                disabled={!table.getCanNextPage() || isFetching}
               >
                 <ChevronsRight className="h-4 w-4" />
               </Button>
               
               <Select
                 value={pagination.pageSize.toString()}
-                onValueChange={(value) => table.setPageSize(Number(value))}
+                onValueChange={(value) => {
+                  const pageSize = Number(value);
+                  table.setPageSize(pageSize);
+                  localStorage.setItem(STORAGE_KEY_PAGE_SIZE, value);
+                }}
               >
                 <SelectTrigger className="w-24">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="10">10</SelectItem>
                   <SelectItem value="20">20</SelectItem>
                   <SelectItem value="50">50</SelectItem>
                   <SelectItem value="100">100</SelectItem>
@@ -599,7 +589,7 @@ export default function OperationsTable() {
       <OperationDetailsPanel 
         operation={selectedOperation} 
         onClose={() => setSelectedOperation(null)}
-        onUpdate={fetchData}
+        onUpdate={refetch}
       />
     </PageContainer>
   );

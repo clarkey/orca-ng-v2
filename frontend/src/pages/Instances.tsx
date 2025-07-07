@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { PageContainer } from '@/components/PageContainer';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import {
   Table,
   TableBody,
@@ -37,36 +37,32 @@ import {
   Clock,
   Loader2,
 } from 'lucide-react';
-import { cyberarkApi, CyberArkInstance } from '@/api/cyberark';
+import { CyberArkInstance } from '@/api/cyberark';
+import { 
+  useCyberArkInstances, 
+  useDeleteCyberArkInstance, 
+  useTestCyberArkConnection,
+  useUpdateCyberArkInstance 
+} from '@/hooks/useCyberArkInstances';
 
 export function Instances() {
-  const [instances, setInstances] = useState<CyberArkInstance[]>([]);
-  const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingInstance, setEditingInstance] = useState<CyberArkInstance | null>(null);
   const [testingInstanceId, setTestingInstanceId] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchInstances();
-  }, []);
+  const { data: response, isLoading, refetch } = useCyberArkInstances();
+  const deleteMutation = useDeleteCyberArkInstance();
+  const testConnectionMutation = useTestCyberArkConnection();
+  const updateMutation = useUpdateCyberArkInstance();
 
-  const fetchInstances = async () => {
-    try {
-      const response = await cyberarkApi.listInstances();
-      setInstances(response.instances);
-    } catch (error) {
-      console.error('Failed to fetch instances:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const instances = response?.instances || [];
 
   const handleTestConnection = async (instance: CyberArkInstance) => {
     setTestingInstanceId(instance.id);
     try {
-      const result = await cyberarkApi.testInstanceConnection(instance.id);
+      const result = await testConnectionMutation.mutateAsync(instance.id);
       // Refresh to show updated test results
-      await fetchInstances();
+      await refetch();
       
       // Show success/failure message
       if (!result.success) {
@@ -82,10 +78,10 @@ export function Instances() {
 
   const handleToggleActive = async (instance: CyberArkInstance) => {
     try {
-      await cyberarkApi.updateInstance(instance.id, {
-        is_active: !instance.is_active,
+      await updateMutation.mutateAsync({
+        id: instance.id,
+        data: { is_active: !instance.is_active }
       });
-      await fetchInstances();
     } catch (error) {
       console.error('Failed to update instance:', error);
       alert('Failed to update instance');
@@ -98,8 +94,7 @@ export function Instances() {
     }
 
     try {
-      await cyberarkApi.deleteInstance(instance.id);
-      await fetchInstances();
+      await deleteMutation.mutateAsync(instance.id);
     } catch (error) {
       console.error('Failed to delete instance:', error);
       alert('Failed to delete instance');
@@ -117,7 +112,7 @@ export function Instances() {
   };
 
   const handleFormSuccess = () => {
-    fetchInstances();
+    refetch();
     handleFormClose();
   };
 
@@ -153,7 +148,7 @@ export function Instances() {
     return 'Failed';
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
       <PageContainer>
         <div className="flex items-center justify-center h-64">

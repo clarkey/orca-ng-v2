@@ -1,157 +1,51 @@
-import { useAuth } from '@/contexts/AuthContext';
-import { useInstance } from '@/contexts/InstanceContext';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
 import { PageContainer } from '@/components/PageContainer';
+import { PageHeader } from '@/components/PageHeader';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { LayoutDashboard, ArrowRight } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 export function Dashboard() {
-  const { user } = useAuth();
-  const { currentInstance, isOverviewMode } = useInstance();
+  const navigate = useNavigate();
 
   return (
     <PageContainer>
-          {/* Instance Header */}
-          {!isOverviewMode && currentInstance && (
-            <div className="mb-6 p-4 bg-gray-50 rounded border border-gray-200">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-lg font-medium text-gray-900">{currentInstance.name}</h2>
-                  <p className="text-sm text-gray-600">{currentInstance.url}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className={cn(
-                    "w-3 h-3 rounded-full",
-                    currentInstance.status === 'connected' ? "bg-green-500" :
-                    currentInstance.status === 'disconnected' ? "bg-gray-400" : "bg-red-500"
-                  )} />
-                  <span className="text-sm text-gray-600 capitalize">{currentInstance.status}</span>
-                </div>
-              </div>
+      <PageHeader
+        title="Dashboard"
+        description="Overview of your ORCA environment and CyberArk instances"
+      />
+      
+      {/* Empty State */}
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Card className="border-gray-200 max-w-md w-full">
+          <CardContent className="p-8 text-center">
+            <div className="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+              <LayoutDashboard className="h-8 w-8 text-gray-400" />
             </div>
-          )}
-
-          {/* Overview Mode Content */}
-          {isOverviewMode && (
-            <div className="mb-8">
-              <h2 className="text-2xl font-semibold text-gray-900 mb-4">CyberArk Overview</h2>
-              <div className="grid gap-4 md:grid-cols-3">
-                <Card className="border-gray-200">
-                  <CardHeader>
-                    <CardTitle className="text-gray-900">Total Safes</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-3xl font-semibold text-gray-900">247</p>
-                    <p className="text-sm text-gray-600">Across all instances</p>
-                  </CardContent>
-                </Card>
-                <Card className="border-gray-200">
-                  <CardHeader>
-                    <CardTitle className="text-gray-900">Active Users</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-3xl font-semibold text-gray-900">1,842</p>
-                    <p className="text-sm text-gray-600">Unique users</p>
-                  </CardContent>
-                </Card>
-                <Card className="border-gray-200">
-                  <CardHeader>
-                    <CardTitle className="text-gray-900">Access Roles</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-3xl font-semibold text-gray-900">89</p>
-                    <p className="text-sm text-gray-600">Defined roles</p>
-                  </CardContent>
-                </Card>
-              </div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Dashboard Under Construction</h3>
+            <p className="text-sm text-gray-600 mb-6">
+              We're building a comprehensive dashboard to give you insights into your CyberArk environment. 
+              In the meantime, you can explore other areas of the application.
+            </p>
+            <div className="space-y-3">
+              <Button 
+                onClick={() => navigate('/instances')}
+                className="w-full"
+              >
+                Configure CyberArk Instances
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+              <Button 
+                variant="outline"
+                onClick={() => navigate('/operations')}
+                className="w-full"
+              >
+                View Operations Queue
+              </Button>
             </div>
-          )}
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            <Card className="border-gray-200">
-              <CardHeader>
-                <CardTitle className="text-gray-900">CyberArk Instances</CardTitle>
-                <CardDescription className="text-gray-600">
-                  Manage connected CyberArk environments
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-gray-500">
-                  No instances configured yet
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card className="border-gray-200">
-              <CardHeader>
-                <CardTitle className="text-gray-900">Safes</CardTitle>
-                <CardDescription className="text-gray-600">
-                  View and manage CyberArk safes
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-gray-500">
-                  Connect a CyberArk instance to view safes
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card className="border-gray-200">
-              <CardHeader>
-                <CardTitle className="text-gray-900">Access Roles</CardTitle>
-                <CardDescription className="text-gray-600">
-                  Configure logical safe access roles
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-gray-500">
-                  No access roles defined yet
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-
-          {user?.is_admin && (
-            <div className="mt-8">
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">Administration</h2>
-              <div className="grid gap-4 md:grid-cols-2">
-                <Card className="border-gray-200">
-                  <CardHeader>
-                    <CardTitle className="text-gray-900">Users</CardTitle>
-                    <CardDescription className="text-gray-600">
-                      Manage ORCA users and permissions
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      className="border-gray-300 text-gray-700 hover:bg-gray-50"
-                    >
-                      Manage Users
-                    </Button>
-                  </CardContent>
-                </Card>
-
-                <Card className="border-gray-200">
-                  <CardHeader>
-                    <CardTitle className="text-gray-900">System Settings</CardTitle>
-                    <CardDescription className="text-gray-600">
-                      Configure system-wide settings
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      className="border-gray-300 text-gray-700 hover:bg-gray-50"
-                    >
-                      View Settings
-                    </Button>
-                  </CardContent>
-                </Card>
-              </div>
-            </div>
-          )}
+          </CardContent>
+        </Card>
+      </div>
     </PageContainer>
   );
 }

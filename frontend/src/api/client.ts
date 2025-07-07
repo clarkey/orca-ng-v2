@@ -20,6 +20,46 @@ export interface LoginResponse {
   message: string;
 }
 
+export interface Safe {
+  id: string;
+  name: string;
+  description?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateSafeRequest {
+  name: string;
+  description?: string;
+}
+
+export interface UpdateSafeRequest {
+  name?: string;
+  description?: string;
+}
+
+export interface Group {
+  id: string;
+  name: string;
+  description?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateUserRequest {
+  username: string;
+  password: string;
+  is_admin?: boolean;
+  is_active?: boolean;
+}
+
+export interface UpdateUserRequest {
+  username?: string;
+  password?: string;
+  is_admin?: boolean;
+  is_active?: boolean;
+}
+
 class ApiClient {
   private async request<T>(
     endpoint: string,
@@ -62,6 +102,57 @@ class ApiClient {
 
   async getCurrentUser(): Promise<User> {
     return this.request<User>('/auth/me');
+  }
+
+  // Safe methods
+  async getSafes(filters?: any): Promise<{ safes: Safe[] }> {
+    return this.get('/safes', { params: filters });
+  }
+
+  async getSafe(id: string): Promise<Safe> {
+    return this.get(`/safes/${id}`);
+  }
+
+  async createSafe(data: CreateSafeRequest): Promise<Safe> {
+    return this.post('/safes', data);
+  }
+
+  async updateSafe(id: string, data: UpdateSafeRequest): Promise<Safe> {
+    return this.put(`/safes/${id}`, data);
+  }
+
+  async deleteSafe(id: string): Promise<void> {
+    return this.delete(`/safes/${id}`);
+  }
+
+  // User methods
+  async getUsers(filters?: any): Promise<{ users: User[] }> {
+    return this.get('/users', { params: filters });
+  }
+
+  async getUser(id: string): Promise<User> {
+    return this.get(`/users/${id}`);
+  }
+
+  async createUser(data: CreateUserRequest): Promise<User> {
+    return this.post('/users', data);
+  }
+
+  async updateUser(id: string, data: UpdateUserRequest): Promise<User> {
+    return this.put(`/users/${id}`, data);
+  }
+
+  async deleteUser(id: string): Promise<void> {
+    return this.delete(`/users/${id}`);
+  }
+
+  // Group methods
+  async getGroups(filters?: any): Promise<{ groups: Group[] }> {
+    return this.get('/groups', { params: filters });
+  }
+
+  async getGroup(id: string): Promise<Group> {
+    return this.get(`/groups/${id}`);
   }
 
   // Generic HTTP methods for other API calls

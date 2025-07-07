@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { PageContainer } from '@/components/PageContainer';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
-import { Plus, Search, Users, UserPlus } from 'lucide-react';
+import { Search, Users, UserPlus } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 
 export default function UsersAndGroups() {

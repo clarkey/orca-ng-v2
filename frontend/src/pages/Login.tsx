@@ -59,7 +59,7 @@ export function Login() {
     setIsLoading(true);
 
     try {
-      await login({ username: values.username, password: values.password });
+      await login(values.username, values.password);
       navigate('/');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');

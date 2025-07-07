@@ -1,9 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { 
   Operation, 
-  Priority, 
   Status, 
   operationsApi, 
   getOperationTypeLabel,
@@ -13,13 +12,6 @@ import {
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { PageContainer } from '../components/PageContainer';
-import { 
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../components/ui/select';
 import { 
   
   RefreshCw, 
@@ -35,7 +27,7 @@ export default function Operations() {
   const navigate = useNavigate();
   const [operations, setOperations] = useState<Operation[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshInterval, setRefreshInterval] = useState<NodeJS.Timer | null>(null);
+  const [_refreshInterval, _setRefreshInterval] = useState<ReturnType<typeof setInterval> | null>(null);
 
   const fetchOperations = async () => {
     try {
@@ -53,7 +45,7 @@ export default function Operations() {
     
     // Set up auto-refresh every 5 seconds
     const interval = setInterval(fetchOperations, 5000);
-    setRefreshInterval(interval);
+    _setRefreshInterval(interval);
     
     return () => {
       if (interval) clearInterval(interval);

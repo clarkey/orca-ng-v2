@@ -1,10 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-import { Checkbox } from './ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -21,10 +20,11 @@ import {
   FormLabel,
   FormMessage,
 } from './ui/form';
-import { Loader2, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle } from 'lucide-react';
 import { cyberarkApi, CyberArkInstance, TestConnectionResponse } from '../api/cyberark';
 import { cn } from '@/lib/utils';
 import { Alert, AlertDescription, AlertTitle } from './ui/alert';
+import { useCreateCyberArkInstance, useUpdateCyberArkInstance } from '@/hooks/useCyberArkInstances';
 
 const baseSchema = z.object({
   name: z.string()
@@ -57,7 +57,9 @@ const editSchema = baseSchema.extend({
   password: z.string().optional(),
 });
 
-type FormData = z.infer<typeof createSchema>;
+type CreateFormData = z.infer<typeof createSchema>;
+type EditFormData = z.infer<typeof editSchema>;
+type FormData = CreateFormData | EditFormData;
 
 interface CyberArkInstanceFormProps {
   open: boolean;
@@ -67,13 +69,14 @@ interface CyberArkInstanceFormProps {
 }
 
 export function CyberArkInstanceForm({ open, onClose, onSuccess, instance }: CyberArkInstanceFormProps) {
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<TestConnectionResponse | null>(null);
-  const [submitError, setSubmitError] = useState<string | null>(null);
   const [hasTestedSuccessfully, setHasTestedSuccessfully] = useState(false);
+  
+  const createMutation = useCreateCyberArkInstance();
+  const updateMutation = useUpdateCyberArkInstance();
 
-  const form = useForm<FormData>({
+  const form = useForm({
     resolver: zodResolver(instance ? editSchema : createSchema),
     defaultValues: {
       name: '',
@@ -129,7 +132,6 @@ export function CyberArkInstanceForm({ open, onClose, onSuccess, instance }: Cyb
         }
       }
       setTestResult(null);
-      setSubmitError(null);
       setHasTestedSuccessfully(false);
     }
   }, [open, instance, form]);
@@ -160,13 +162,12 @@ export function CyberArkInstanceForm({ open, onClose, onSuccess, instance }: Cyb
 
     setIsTesting(true);
     setTestResult(null);
-    setSubmitError(null);
 
     try {
       const result = await cyberarkApi.testConnection({
         base_url: values.base_url,
         username: values.username,
-        password: values.password,
+        password: values.password || '',
       });
       setTestResult(result);
       setHasTestedSuccessfully(result.success);
@@ -186,11 +187,11 @@ export function CyberArkInstanceForm({ open, onClose, onSuccess, instance }: Cyb
   const onSubmit = async (values: FormData) => {
     // For new instances, ensure connection has been tested successfully
     if (!instance && !hasTestedSuccessfully) {
-      setSubmitError('Please test the connection successfully before creating the instance');
+      form.setError('root', {
+        message: 'Please test the connection successfully before creating the instance'
+      });
       return;
     }
-    setIsSubmitting(true);
-    setSubmitError(null);
 
     try {
       if (instance) {
@@ -202,10 +203,13 @@ export function CyberArkInstanceForm({ open, onClose, onSuccess, instance }: Cyb
         if (values.password) updateData.password = values.password;
         if (values.concurrent_sessions !== instance.concurrent_sessions) updateData.concurrent_sessions = values.concurrent_sessions;
 
-        await cyberarkApi.updateInstance(instance.id, updateData);
+        await updateMutation.mutateAsync({ id: instance.id, data: updateData });
       } else {
         // Create new instance
-        await cyberarkApi.createInstance(values);
+        await createMutation.mutateAsync({
+          ...values,
+          password: values.password || ''
+        });
         // Clear saved form values on successful creation
         localStorage.removeItem('cyberark-instance-form');
       }
@@ -213,14 +217,14 @@ export function CyberArkInstanceForm({ open, onClose, onSuccess, instance }: Cyb
       onSuccess();
       onClose();
     } catch (error: any) {
-      setSubmitError(error.response?.data?.error || 'Failed to save instance');
-    } finally {
-      setIsSubmitting(false);
+      form.setError('root', {
+        message: error.response?.data?.error || 'Failed to save instance'
+      });
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={() => !isSubmitting && onClose()}>
+    <Dialog open={open} onOpenChange={() => !createMutation.isPending && !updateMutation.isPending && onClose()}>
       <DialogContent className="max-w-2xl p-0 overflow-hidden">
         <DialogHeaderStyled 
           title={instance ? 'Edit CyberArk Instance' : 'Add CyberArk Instance'}
@@ -230,11 +234,11 @@ export function CyberArkInstanceForm({ open, onClose, onSuccess, instance }: Cyb
         <div className="px-6 pb-6 pt-2">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6" autoComplete="off">
-              {submitError && (
+              {form.formState.errors.root && (
                 <Alert variant="destructive">
                   <XCircle className="h-4 w-4" />
                   <AlertTitle>Error</AlertTitle>
-                  <AlertDescription>{submitError}</AlertDescription>
+                  <AlertDescription>{form.formState.errors.root.message}</AlertDescription>
                 </Alert>
               )}
 
@@ -364,7 +368,7 @@ export function CyberArkInstanceForm({ open, onClose, onSuccess, instance }: Cyb
                   type="button"
                   variant="outline"
                   onClick={handleTestConnection}
-                  disabled={isTesting || isSubmitting}
+                  disabled={isTesting || createMutation.isPending || updateMutation.isPending}
                 >
                   {isTesting ? (
                     <>
@@ -382,16 +386,16 @@ export function CyberArkInstanceForm({ open, onClose, onSuccess, instance }: Cyb
                   type="button"
                   variant="outline"
                   onClick={onClose}
-                  disabled={isSubmitting}
+                  disabled={createMutation.isPending || updateMutation.isPending}
                 >
                   Cancel
                 </Button>
                 
                 <Button 
                   type="submit" 
-                  disabled={isSubmitting || isTesting || (!instance && !hasTestedSuccessfully)}
+                  disabled={createMutation.isPending || updateMutation.isPending || isTesting || (!instance && !hasTestedSuccessfully)}
                 >
-                  {isSubmitting ? (
+                  {createMutation.isPending || updateMutation.isPending ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                       Saving...
