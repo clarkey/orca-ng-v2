@@ -91,7 +91,68 @@ export default function OperationsTable() {
   const { data: response, isLoading, refetch, isFetching, isPreviousData } = useOperations(queryParams, { prefetchNext: true });
   const cancelMutation = useCancelOperation();
   
-  const data = response?.operations || [];
+  // Add fake instance data for visualization
+  const fakeInstanceNames = [
+    'Production CyberArk',
+    'Development CyberArk', 
+    'UAT Environment',
+    'DR Site Instance',
+    'Cloud CyberArk',
+    'On-Prem Primary',
+    'APAC Region',
+    'EMEA Region',
+    'Americas Instance'
+  ];
+  
+  const dataWithFakeInstances = response?.operations?.map((op, index) => {
+    // Generate fake payload data based on operation type
+    const fakePayloads: Record<OperationType, any> = {
+      safe_provision: {
+        safe_name: `APP-PROD-${1000 + index}`,
+        description: 'Production application safe'
+      },
+      safe_modify: {
+        safe_name: `APP-DEV-${2000 + index}`,
+        changes: 'Updated retention policy'
+      },
+      safe_delete: {
+        safe_name: `APP-TEST-${3000 + index}`,
+        reason: 'Environment decommissioned'
+      },
+      access_grant: {
+        username: ['john.smith', 'jane.doe', 'bob.wilson', 'alice.brown'][index % 4],
+        safe_name: `APP-PROD-${1000 + index}`,
+        permission_set: ['Read-Only', 'Full Access', 'Retrieve'][index % 3]
+      },
+      access_revoke: {
+        username: ['mike.jones', 'sarah.davis', 'tom.white'][index % 3],
+        safe_name: `APP-UAT-${4000 + index}`
+      },
+      user_sync: {
+        sync_type: ['Full Sync', 'Incremental', 'Delta'][index % 3],
+        affected_users: Math.floor(Math.random() * 100) + 1
+      },
+      safe_sync: {
+        sync_type: ['Full Sync', 'Permissions Only'][index % 2],
+        affected_safes: Math.floor(Math.random() * 50) + 1
+      },
+      group_sync: {
+        sync_type: ['AD Groups', 'LDAP Groups'][index % 2],
+        affected_groups: Math.floor(Math.random() * 20) + 1
+      }
+    };
+    
+    return {
+      ...op,
+      cyberark_instance_info: {
+        id: op.cyberark_instance_id || `inst_${index}`,
+        name: fakeInstanceNames[index % fakeInstanceNames.length]
+      },
+      payload: fakePayloads[op.type] || op.payload
+    };
+  }) || [];
+  
+  const data = dataWithFakeInstances;
   const totalCount = response?.pagination?.total_count || 0;
   const pageCount = response?.pagination?.total_pages || 0;
 
@@ -104,7 +165,7 @@ export default function OperationsTable() {
         id: 'status',
         accessorKey: 'status',
         header: () => <span></span>,
-        size: 30,
+        size: 20,
         cell: ({ row }) => {
           const statusIcons: Record<Status, { icon: React.ReactNode; color: string }> = {
             pending: { 
@@ -132,7 +193,7 @@ export default function OperationsTable() {
           const status = statusIcons[row.original.status];
           
           return (
-            <div className="flex items-center pl-2" title={row.original.status}>
+            <div className="flex justify-center pt-1" title={row.original.status}>
               <span className={status.color}>
                 {status.icon}
               </span>
@@ -159,7 +220,7 @@ export default function OperationsTable() {
               }}
               className="h-auto p-0 font-medium hover:bg-transparent"
             >
-              Type / ID
+              Type
               {column.getIsSorted() === "asc" && <ChevronUp className="ml-2 h-4 w-4" />}
               {column.getIsSorted() === "desc" && <ChevronDown className="ml-2 h-4 w-4" />}
             </Button>
@@ -167,12 +228,20 @@ export default function OperationsTable() {
         },
         size: 220,
         enableSorting: true,
-        cell: ({ row }) => (
-          <div className="space-y-1">
-            <div className="font-medium text-sm">{getOperationTypeLabel(row.original.type)}</div>
-            <div className="font-mono text-xs text-gray-500">{row.original.id}</div>
-          </div>
-        ),
+        cell: ({ row }) => {
+          const instanceInfo = row.original.cyberark_instance_info;
+          const instanceId = row.original.cyberark_instance_id;
+          const instanceName = instanceInfo?.name || (instanceId ? 'Unknown Instance' : null);
+          
+          return (
+            <div className="space-y-1">
+              <div className="font-medium text-sm">{getOperationTypeLabel(row.original.type)}</div>
+              {instanceName && (
+                <div className="text-xs text-gray-500">{instanceName}</div>
+              )}
+            </div>
+          );
+        },
       },
       {
         id: 'subject',
@@ -180,126 +249,64 @@ export default function OperationsTable() {
         header: 'Subject',
         size: 200,
         cell: ({ row }) => {
-          // Configuration for extracting subject fields by operation type
-          const subjectConfig: Record<OperationType, { primary: string[], secondary: string[] }> = {
-            safe_provision: { 
-              primary: ['safe_name'], 
-              secondary: ['cyberark_instance_id'] 
-            },
-            safe_modify: { 
-              primary: ['safe_name'], 
-              secondary: ['cyberark_instance_id'] 
-            },
-            safe_delete: { 
-              primary: ['safe_name'], 
-              secondary: ['cyberark_instance_id'] 
-            },
-            access_grant: { 
-              primary: ['username', 'user_id'], 
-              secondary: ['safe_name', 'permission_set'] 
-            },
-            access_revoke: { 
-              primary: ['username', 'user_id'], 
-              secondary: ['safe_name'] 
-            },
-            user_sync: { 
-              primary: ['cyberark_instance_id'], 
-              secondary: ['sync_type'] 
-            },
-            safe_sync: { 
-              primary: ['cyberark_instance_id'], 
-              secondary: ['sync_type'] 
-            },
-            group_sync: { 
-              primary: ['cyberark_instance_id'], 
-              secondary: ['sync_type'] 
-            },
+          const payload = row.original.payload || {};
+          
+          // Define display configuration with labels for each operation type
+          const displayConfig: Record<OperationType, Array<{key: string, label: string, primary?: boolean}>> = {
+            safe_provision: [
+              { key: 'safe_name', label: 'Safe', primary: true },
+              { key: 'description', label: 'Description' }
+            ],
+            safe_modify: [
+              { key: 'safe_name', label: 'Safe', primary: true },
+              { key: 'changes', label: 'Changes' }
+            ],
+            safe_delete: [
+              { key: 'safe_name', label: 'Safe', primary: true },
+              { key: 'reason', label: 'Reason' }
+            ],
+            access_grant: [
+              { key: 'username', label: 'User', primary: true },
+              { key: 'safe_name', label: 'Safe' },
+              { key: 'permission_set', label: 'Permissions' }
+            ],
+            access_revoke: [
+              { key: 'username', label: 'User', primary: true },
+              { key: 'safe_name', label: 'Safe' }
+            ],
+            user_sync: [
+              { key: 'sync_type', label: 'Type', primary: true },
+              { key: 'affected_users', label: 'Users' }
+            ],
+            safe_sync: [
+              { key: 'sync_type', label: 'Type', primary: true },
+              { key: 'affected_safes', label: 'Safes' }
+            ],
+            group_sync: [
+              { key: 'sync_type', label: 'Type', primary: true },
+              { key: 'affected_groups', label: 'Groups' }
+            ],
           };
           
-          const config = subjectConfig[row.original.type];
-          if (!config || !row.original.payload) {
-            return <span className="text-gray-400 text-xs">-</span>;
+          const config = displayConfig[row.original.type];
+          if (!config) {
+            return <span className="text-gray-400 text-xs">No details</span>;
           }
           
-          // Extract values from payload
-          const payload = row.original.payload;
-          const primaryValue = config.primary
-            .map(field => payload[field])
-            .filter(Boolean)
-            .join(' / ');
-          
-          const secondaryValue = config.secondary
-            .map(field => payload[field])
-            .filter(Boolean)
-            .join(' • ');
+          const allFields = config.filter(f => payload[f.key]);
           
           return (
             <div className="space-y-0.5">
-              {primaryValue && (
-                <div className="text-sm font-medium text-gray-900 truncate" title={primaryValue}>
-                  {primaryValue}
-                </div>
+              {allFields.length > 0 ? (
+                allFields.map((field, idx) => (
+                  <div key={idx} className="text-sm">
+                    <span className="text-gray-500">{field.label}:</span>{' '}
+                    <span className="text-gray-900">{payload[field.key]}</span>
+                  </div>
+                ))
+              ) : (
+                <span className="text-gray-400 text-sm">No details</span>
               )}
-              {secondaryValue && (
-                <div className="text-xs text-gray-500 truncate" title={secondaryValue}>
-                  {secondaryValue}
-                </div>
-              )}
-              {!primaryValue && !secondaryValue && (
-                <span className="text-gray-400 text-xs">-</span>
-              )}
-            </div>
-          );
-        },
-      },
-      {
-        id: 'cyberark_instance',
-        accessorKey: 'cyberark_instance',
-        header: 'Instance',
-        size: 150,
-        cell: ({ row }) => {
-          const instanceInfo = row.original.cyberark_instance_info;
-          const instanceId = row.original.cyberark_instance_id;
-          
-          if (!instanceInfo && !instanceId) {
-            return <span className="text-gray-400 text-xs">-</span>;
-          }
-          
-          const instanceName = instanceInfo?.name || instanceId || 'Unknown';
-          const displayId = instanceInfo?.id || instanceId || '-';
-          
-          return (
-            <div className="space-y-0.5">
-              <div className="text-sm font-medium text-gray-900 truncate" title={instanceName}>
-                {instanceName}
-              </div>
-              <div className="text-xs text-gray-500 font-mono truncate" title={displayId}>
-                {displayId}
-              </div>
-            </div>
-          );
-        },
-      },
-      {
-        id: 'created_by',
-        accessorKey: 'created_by',
-        header: 'Created By',
-        size: 150,
-        cell: ({ row }) => {
-          const userInfo = row.original.created_by_user;
-          const userId = row.original.created_by;
-          
-          if (!userId && !userInfo) {
-            return <span className="text-gray-400 text-xs">System</span>;
-          }
-          
-          const username = userInfo?.username || 'Unknown User';
-          const displayId = userInfo?.id || userId || '-';
-          
-          return (
-            <div className="space-y-1">
-              <div className="text-sm font-medium text-gray-900">{username}</div>
-              <div className="text-xs text-gray-500 font-mono">{displayId}</div>
             </div>
           );
         },
@@ -323,7 +330,7 @@ export default function OperationsTable() {
               }}
               className="h-auto p-0 font-medium hover:bg-transparent"
             >
-              Created
+              Added
               {column.getIsSorted() === "asc" && <ChevronUp className="ml-2 h-4 w-4" />}
               {column.getIsSorted() === "desc" && <ChevronDown className="ml-2 h-4 w-4" />}
             </Button>
@@ -351,9 +358,17 @@ export default function OperationsTable() {
             relativeTime = format(createdDate, 'MMM d');
           }
           
+          // Get username
+          const userInfo = row.original.created_by_user;
+          const userId = row.original.created_by;
+          const username = userInfo?.username || (userId ? 'Unknown' : 'System');
+          
           return (
             <div className="space-y-0.5">
-              <div className="text-sm">{relativeTime}</div>
+              <div className="text-sm">
+                {relativeTime}
+                <span className="text-gray-500 ml-1">by {username}</span>
+              </div>
               <div className="text-xs text-gray-500">{format(createdDate, 'MMM d, HH:mm:ss')}</div>
             </div>
           );
@@ -364,7 +379,7 @@ export default function OperationsTable() {
         header: '',
         size: 100,
         cell: ({ row }) => (
-          <div className="flex items-center justify-end gap-2">
+          <div className="flex justify-end gap-2 pt-1">
             {(row.original.status === 'pending' || row.original.status === 'processing') && (
               <Button
                 variant="ghost"
@@ -482,6 +497,7 @@ export default function OperationsTable() {
                       {row.getVisibleCells().map((cell) => (
                         <TableCell 
                           key={cell.id}
+                          className="align-top"
                         >
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
                         </TableCell>
