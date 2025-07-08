@@ -124,3 +124,10 @@ func (cm *CertificateManager) GetHTTPClient(ctx context.Context, skipTLSVerify b
 		},
 	}, nil
 }
+
+// ForceRefresh immediately refreshes the certificate pool, bypassing the refresh interval.
+// This should be called after any certificate authority modifications (create, update, delete).
+func (cm *CertificateManager) ForceRefresh(ctx context.Context) error {
+	cm.logger.Info("Forcing certificate pool refresh")
+	return cm.refreshCertificates(ctx)
+}

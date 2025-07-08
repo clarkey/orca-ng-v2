@@ -17,6 +17,7 @@ import (
 	"github.com/orca-ng/orca/internal/middleware"
 	"github.com/orca-ng/orca/internal/pipeline"
 	phandlers "github.com/orca-ng/orca/internal/pipeline/handlers"
+	"github.com/orca-ng/orca/internal/services"
 	"github.com/sirupsen/logrus"
 )
 
@@ -115,7 +116,11 @@ func main() {
 			logrus.Fatal("ENCRYPTION_KEY environment variable must be set in production")
 		}
 	}
-	cyberarkHandler := handlers.NewCyberArkInstancesHandler(db, logrus.StandardLogger(), encryptionKey)
+	// Initialize certificate manager
+	certManager := services.NewCertificateManager(db.Pool(), logrus.StandardLogger())
+	
+	cyberarkHandler := handlers.NewCyberArkInstancesHandler(db, logrus.StandardLogger(), encryptionKey, certManager)
+	certAuthHandler := handlers.NewCertificateAuthoritiesHandler(db, logrus.StandardLogger(), certManager)
 
 	// API routes
 	api := router.Group("/api")
@@ -149,6 +154,14 @@ func main() {
 			protected.DELETE("/cyberark/instances/:id", cyberarkHandler.DeleteInstance)
 			protected.POST("/cyberark/test-connection", cyberarkHandler.TestConnection)
 			protected.POST("/cyberark/instances/:id/test", cyberarkHandler.TestInstanceConnection)
+			
+			// Certificate Authorities routes
+			protected.GET("/certificate-authorities", certAuthHandler.List)
+			protected.GET("/certificate-authorities/:id", certAuthHandler.Get)
+			protected.POST("/certificate-authorities", certAuthHandler.Create)
+			protected.PUT("/certificate-authorities/:id", certAuthHandler.Update)
+			protected.DELETE("/certificate-authorities/:id", certAuthHandler.Delete)
+			protected.POST("/certificate-authorities/refresh", certAuthHandler.RefreshPool)
 			
 			// Admin routes
 			admin := protected.Group("/admin")

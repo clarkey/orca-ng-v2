@@ -19,13 +19,15 @@ type CertificateAuthoritiesHandler struct {
 	db          *database.DB
 	logger      *logrus.Logger
 	certService *services.CertificateService
+	certManager *services.CertificateManager
 }
 
-func NewCertificateAuthoritiesHandler(db *database.DB, logger *logrus.Logger) *CertificateAuthoritiesHandler {
+func NewCertificateAuthoritiesHandler(db *database.DB, logger *logrus.Logger, certManager *services.CertificateManager) *CertificateAuthoritiesHandler {
 	return &CertificateAuthoritiesHandler{
 		db:          db,
 		logger:      logger,
 		certService: services.NewCertificateService(),
+		certManager: certManager,
 	}
 }
 
@@ -184,6 +186,12 @@ func (h *CertificateAuthoritiesHandler) Create(c *gin.Context) {
 		"user_id": userID,
 	}).Info("Certificate authority created")
 	
+	// Force refresh the certificate pool to immediately use the new certificate
+	if err := h.certManager.ForceRefresh(c.Request.Context()); err != nil {
+		h.logger.WithError(err).Error("Failed to refresh certificate pool after create")
+		// Don't fail the request, the certificate was created successfully
+	}
+	
 	c.JSON(http.StatusCreated, ca)
 }
 
@@ -272,6 +280,14 @@ func (h *CertificateAuthoritiesHandler) Update(c *gin.Context) {
 		"user_id": userID,
 	}).Info("Certificate authority updated")
 	
+	// Force refresh the certificate pool if the active status changed
+	if req.IsActive != nil {
+		if err := h.certManager.ForceRefresh(c.Request.Context()); err != nil {
+			h.logger.WithError(err).Error("Failed to refresh certificate pool after update")
+			// Don't fail the request, the certificate was updated successfully
+		}
+	}
+	
 	c.JSON(http.StatusOK, ca)
 }
 
@@ -299,5 +315,33 @@ func (h *CertificateAuthoritiesHandler) Delete(c *gin.Context) {
 		"user_id": user.ID,
 	}).Info("Certificate authority deleted")
 	
+	// Force refresh the certificate pool to remove the deleted certificate
+	if err := h.certManager.ForceRefresh(c.Request.Context()); err != nil {
+		h.logger.WithError(err).Error("Failed to refresh certificate pool after delete")
+		// Don't fail the request, the certificate was deleted successfully
+	}
+	
 	c.JSON(http.StatusOK, gin.H{"message": "Certificate authority deleted successfully"})
+}
+
+// RefreshPool forces a refresh of the certificate pool
+// This is useful when certificates have been modified directly in the database
+func (h *CertificateAuthoritiesHandler) RefreshPool(c *gin.Context) {
+	// Get the current user for logging
+	userInterface, _ := c.Get("user")
+	user := userInterface.(*models.User)
+	
+	h.logger.WithFields(logrus.Fields{
+		"user_id": user.ID,
+		"action": "manual_cert_pool_refresh",
+	}).Info("Manual certificate pool refresh requested")
+	
+	// Force refresh the certificate pool
+	if err := h.certManager.ForceRefresh(c.Request.Context()); err != nil {
+		h.logger.WithError(err).Error("Failed to refresh certificate pool")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to refresh certificate pool"})
+		return
+	}
+	
+	c.JSON(http.StatusOK, gin.H{"message": "Certificate pool refreshed successfully"})
 }
