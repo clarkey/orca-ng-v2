@@ -15,8 +15,8 @@ export function Dashboard() {
         description="Overview of your ORCA environment and CyberArk instances"
       />
       
-      {/* Empty State */}
-      <div className="flex items-center justify-center min-h-[400px]">
+      {/* Empty State - Left Aligned */}
+      <div className="flex justify-start">
         <Card className="border-gray-200 max-w-md w-full">
           <CardContent className="p-8 text-center">
             <div className="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">

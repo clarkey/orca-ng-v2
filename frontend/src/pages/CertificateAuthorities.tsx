@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   useReactTable,
   getCoreRowModel,
@@ -9,8 +10,8 @@ import {
   SortingState,
   PaginationState,
 } from '@tanstack/react-table';
-import { PageContainer } from '@/components/PageContainer';
-import { PageHeader } from '@/components/PageHeader';
+import { Plus, Shield, Check, X, Loader2, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { certificateAuthoritiesApi, CertificateAuthorityInfo } from '@/api/certificateAuthorities';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -30,42 +31,19 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Switch } from '@/components/ui/switch';
-import { CyberArkInstanceForm } from '@/components/CyberArkInstanceForm';
+import { PageContainer } from '@/components/PageContainer';
+import { PageHeader } from '@/components/PageHeader';
+import { CertificateAuthorityForm } from '@/components/CertificateAuthorityForm';
 import { ConfirmationDialog } from '@/components/ui/confirmation-dialog';
-import { format } from 'date-fns';
-import {
-  Plus,
-  AlertCircle,
-  Server,
-  Globe,
-  User,
-  Clock,
-  Loader2,
-  ShieldOff,
-  ChevronUp,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
-  Check,
-  X,
-} from 'lucide-react';
-import { CyberArkInstance } from '@/api/cyberark';
-import { 
-  useCyberArkInstances, 
-  useDeleteCyberArkInstance, 
-  useUpdateCyberArkInstance 
-} from '@/hooks/useCyberArkInstances';
 
-const STORAGE_KEY_PAGE_SIZE = 'orca-cyberark-instances-page-size';
+const STORAGE_KEY_PAGE_SIZE = 'orca-certificate-authorities-page-size';
 
-export function Instances() {
+export function CertificateAuthorities() {
+  const queryClient = useQueryClient();
+  const [selectedCA, setSelectedCA] = useState<CertificateAuthorityInfo | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [selectedInstance, setSelectedInstance] = useState<CyberArkInstance | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [instanceToDelete, setInstanceToDelete] = useState<CyberArkInstance | null>(null);
+  const [caToDelete, setCaToDelete] = useState<CertificateAuthorityInfo | null>(null);
   
   // Table state
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -79,62 +57,29 @@ export function Instances() {
     };
   });
 
-  const { data: response, isLoading, refetch } = useCyberArkInstances();
-  const deleteMutation = useDeleteCyberArkInstance();
-  const updateMutation = useUpdateCyberArkInstance();
+  // Fetch data
+  const { data, isLoading, error, refetch, isFetching } = useQuery({
+    queryKey: ['certificate-authorities'],
+    queryFn: certificateAuthoritiesApi.list,
+  });
 
-  const instances = response?.instances || [];
-
-
-  const handleToggleActive = async (instance: CyberArkInstance) => {
-    try {
-      await updateMutation.mutateAsync({
-        id: instance.id,
-        data: { is_active: !instance.is_active }
-      });
-    } catch (error) {
-      console.error('Failed to update instance:', error);
-      alert('Failed to update instance');
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!instanceToDelete) return;
-    
-    try {
-      await deleteMutation.mutateAsync(instanceToDelete.id);
-      alert('CyberArk instance deleted successfully');
+  const deleteMutation = useMutation({
+    mutationFn: certificateAuthoritiesApi.delete,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['certificate-authorities'] });
+      alert('Certificate authority deleted successfully');
       setShowDeleteDialog(false);
-      setInstanceToDelete(null);
+      setCaToDelete(null);
       refetch();
-    } catch (error) {
-      console.error('Failed to delete instance:', error);
-      alert('Failed to delete instance');
-    }
-  };
+    },
+    onError: (error: any) => {
+      alert(error.response?.data?.error || 'Failed to delete certificate authority');
+    },
+  });
 
-  const handleDeleteRequest = (instance: CyberArkInstance) => {
-    setInstanceToDelete(instance);
-    setShowDeleteDialog(true);
-  };
-
-  const handleEdit = (instance: CyberArkInstance) => {
-    setSelectedInstance(instance);
-    setShowForm(true);
-  };
-
-  const handleFormClose = () => {
-    setShowForm(false);
-    setSelectedInstance(null);
-  };
-
-  const handleFormSuccess = () => {
-    refetch();
-    handleFormClose();
-  };
 
   // Define columns
-  const columns = useMemo<ColumnDef<CyberArkInstance>[]>(
+  const columns = useMemo<ColumnDef<CertificateAuthorityInfo>[]>(
     () => [
       {
         id: 'name',
@@ -155,7 +100,7 @@ export function Instances() {
               }}
               className="h-auto p-0 font-medium hover:bg-transparent"
             >
-              Instance
+              Name
               {column.getIsSorted() === "asc" && <ChevronUp className="ml-2 h-4 w-4" />}
               {column.getIsSorted() === "desc" && <ChevronDown className="ml-2 h-4 w-4" />}
             </Button>
@@ -165,70 +110,42 @@ export function Instances() {
         cell: ({ row }) => (
           <div>
             <div className="font-medium">{row.original.name}</div>
-            <div className="text-xs text-gray-500 font-mono">{row.original.id}</div>
-          </div>
-        ),
-      },
-      {
-        id: 'connection',
-        accessorKey: 'base_url',
-        header: 'Connection',
-        size: 350,
-        cell: ({ row }) => (
-          <div className="space-y-1">
-            <div className="flex items-center gap-2 text-sm">
-              <Globe className="h-3.5 w-3.5 text-gray-400" />
-              <span className="font-mono text-xs truncate max-w-[300px]" title={row.original.base_url}>
-                {row.original.base_url}
-              </span>
-            </div>
-            <div className="flex items-center gap-2 text-sm">
-              <User className="h-3.5 w-3.5 text-gray-400" />
-              <span className="text-gray-600">{row.original.username}</span>
-            </div>
-            {row.original.skip_tls_verify && (
-              <div className="flex items-center gap-2 text-sm mt-1">
-                <ShieldOff className="h-3.5 w-3.5 text-orange-500" />
-                <span className="text-orange-600 text-xs">TLS verification disabled</span>
-              </div>
+            {row.original.description && (
+              <div className="text-sm text-gray-500 mt-1">{row.original.description}</div>
             )}
           </div>
         ),
       },
       {
-        id: 'status',
-        accessorKey: 'last_test_success',
-        header: 'Status',
-        size: 150,
-        cell: ({ row }) => {
-          const instance = row.original;
-          if (!instance.last_test_at) {
-            return (
-              <Badge variant="secondary" className="gap-1">
-                <AlertCircle className="h-3 w-3" />
-                Not tested
-              </Badge>
-            );
-          }
-          if (instance.last_test_success) {
-            return (
-              <Badge variant="success" className="gap-1">
-                <Check className="h-3 w-3" />
-                Connected
-              </Badge>
-            );
-          }
-          return (
-            <Badge variant="destructive" className="gap-1">
-              <X className="h-3 w-3" />
-              Failed
-            </Badge>
-          );
-        },
+        id: 'subject',
+        accessorKey: 'subject',
+        header: 'Subject',
+        size: 350,
+        cell: ({ row }) => (
+          <div className="text-sm">
+            <div className="truncate max-w-[350px]" title={row.original.subject}>
+              {row.original.subject}
+            </div>
+            <div className="text-xs text-gray-500 font-mono mt-1">
+              SHA256: {row.original.fingerprint.substring(0, 16)}...
+            </div>
+          </div>
+        ),
       },
       {
-        id: 'last_test_at',
-        accessorKey: 'last_test_at',
+        id: 'issuer',
+        accessorKey: 'issuer',
+        header: 'Issuer',
+        size: 250,
+        cell: ({ row }) => (
+          <div className="text-sm truncate max-w-[250px]" title={row.original.issuer}>
+            {row.original.issuer}
+          </div>
+        ),
+      },
+      {
+        id: 'validity',
+        accessorKey: 'expires_in_days',
         header: ({ column }) => {
           return (
             <Button
@@ -245,39 +162,54 @@ export function Instances() {
               }}
               className="h-auto p-0 font-medium hover:bg-transparent"
             >
-              Last Tested
+              Validity
               {column.getIsSorted() === "asc" && <ChevronUp className="ml-2 h-4 w-4" />}
               {column.getIsSorted() === "desc" && <ChevronDown className="ml-2 h-4 w-4" />}
             </Button>
           )
         },
         size: 180,
-        cell: ({ row }) => (
-          row.original.last_test_at ? (
-            <div className="flex items-center gap-2 text-sm text-gray-600">
-              <Clock className="h-3.5 w-3.5" />
-              {format(new Date(row.original.last_test_at), 'MMM d, HH:mm')}
-            </div>
-          ) : (
-            <span className="text-sm text-gray-400">Never</span>
-          )
-        ),
+        cell: ({ row }) => {
+          const ca = row.original;
+          if (ca.is_expired) {
+            return <Badge variant="destructive">Expired</Badge>;
+          }
+          if (ca.expires_in_days <= 30) {
+            return <Badge variant="destructive">Expires in {ca.expires_in_days} days</Badge>;
+          }
+          if (ca.expires_in_days <= 90) {
+            return <Badge variant="secondary">Expires in {ca.expires_in_days} days</Badge>;
+          }
+          return <Badge variant="outline">Valid for {ca.expires_in_days} days</Badge>;
+        },
       },
       {
-        id: 'is_active',
+        id: 'status_badge',
         accessorKey: 'is_active',
-        header: 'Active',
+        header: 'Status',
         size: 100,
-        cell: ({ row }) => (
-          <div className="flex justify-center">
-            <Switch
-              checked={row.original.is_active}
-              onCheckedChange={() => handleToggleActive(row.original)}
-              aria-label={`Toggle ${row.original.name} active state`}
-              onClick={(e) => e.stopPropagation()}
-            />
-          </div>
-        ),
+        cell: ({ row }) => {
+          const ca = row.original;
+          if (ca.is_expired) {
+            return (
+              <Badge variant="destructive" className="gap-1">
+                <X className="h-3 w-3" />
+                Expired
+              </Badge>
+            );
+          }
+          return ca.is_active ? (
+            <Badge variant="success" className="gap-1">
+              <Check className="h-3 w-3" />
+              Active
+            </Badge>
+          ) : (
+            <Badge variant="secondary" className="gap-1">
+              <X className="h-3 w-3" />
+              Inactive
+            </Badge>
+          );
+        },
       },
       {
         id: 'actions',
@@ -294,8 +226,8 @@ export function Instances() {
   );
 
   const tableData = useMemo(
-    () => instances || [],
-    [instances]
+    () => data?.certificate_authorities || [],
+    [data?.certificate_authorities]
   );
 
   const table = useReactTable({
@@ -312,6 +244,26 @@ export function Instances() {
     getSortedRowModel: getSortedRowModel(),
   });
 
+  const handleEdit = (ca: CertificateAuthorityInfo) => {
+    setSelectedCA(ca);
+    setShowForm(true);
+  };
+
+  const handleFormClose = () => {
+    setShowForm(false);
+    setSelectedCA(null);
+  };
+
+  const handleFormSuccess = () => {
+    refetch();
+    handleFormClose();
+  };
+
+  const handleDeleteRequest = (ca: CertificateAuthorityInfo) => {
+    setCaToDelete(ca);
+    setShowDeleteDialog(true);
+  };
+
   if (isLoading && tableData.length === 0) {
     return (
       <PageContainer>
@@ -322,15 +274,25 @@ export function Instances() {
     );
   }
 
+  if (error) {
+    return (
+      <PageContainer>
+        <div className="text-center py-8 text-red-500">
+          Failed to load certificate authorities
+        </div>
+      </PageContainer>
+    );
+  }
+
   return (
     <PageContainer>
       <PageHeader
-        title="CyberArk Instances"
-        description="Manage your CyberArk PVWA instance configurations"
+        title="Certificate Authorities"
+        description="Manage trusted certificate authorities for secure connections"
         actions={
           <Button onClick={() => setShowForm(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Instance
+            <Plus className="mr-2 h-4 w-4" />
+            Add Certificate
           </Button>
         }
       />
@@ -340,7 +302,7 @@ export function Instances() {
       <Card className="overflow-hidden">
         <CardContent className="p-0 relative">
           {/* Loading overlay for refetch */}
-          {isLoading && !isLoading && (
+          {isFetching && !isLoading && (
             <div className="absolute inset-0 bg-white/50 backdrop-blur-sm z-10 flex items-center justify-center">
               <Loader2 className="h-6 w-6 animate-spin text-gray-600" />
             </div>
@@ -348,16 +310,16 @@ export function Instances() {
           
           {tableData.length === 0 ? (
             <div className="text-center py-16">
-              <Server className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+              <Shield className="h-12 w-12 mx-auto mb-4 text-gray-400" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">
-                No CyberArk instances configured
+                No certificate authorities configured
               </h3>
               <p className="text-sm text-gray-500 mb-6">
-                Add your first CyberArk PVWA instance to get started
+                Add certificate authorities to establish secure connections
               </p>
               <Button onClick={() => setShowForm(true)}>
                 <Plus className="mr-2 h-4 w-4" />
-                Add Instance
+                Add Certificate
               </Button>
             </div>
           ) : (
@@ -400,7 +362,7 @@ export function Instances() {
                   ) : (
                     <TableRow>
                       <TableCell colSpan={columns.length} className="h-24 text-center">
-                        No instances found.
+                        No certificate authorities found.
                       </TableCell>
                     </TableRow>
                   )}
@@ -415,7 +377,7 @@ export function Instances() {
                     (table.getState().pagination.pageIndex + 1) * table.getState().pagination.pageSize,
                     table.getFilteredRowModel().rows.length
                   )}{' '}
-                  of {table.getFilteredRowModel().rows.length} instance{table.getFilteredRowModel().rows.length !== 1 ? 's' : ''}
+                  of {table.getFilteredRowModel().rows.length} certificate{table.getFilteredRowModel().rows.length !== 1 ? 's' : ''}
                 </div>
                 
                 <div className="flex items-center gap-2">
@@ -423,7 +385,7 @@ export function Instances() {
                     variant="outline"
                     size="sm"
                     onClick={() => table.setPageIndex(0)}
-                    disabled={!table.getCanPreviousPage() || isLoading}
+                    disabled={!table.getCanPreviousPage() || isFetching}
                   >
                     <ChevronsLeft className="h-4 w-4" />
                   </Button>
@@ -431,7 +393,7 @@ export function Instances() {
                     variant="outline"
                     size="sm"
                     onClick={() => table.previousPage()}
-                    disabled={!table.getCanPreviousPage() || isLoading}
+                    disabled={!table.getCanPreviousPage() || isFetching}
                   >
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
@@ -448,7 +410,7 @@ export function Instances() {
                       className="w-16 text-center"
                       min={1}
                       max={table.getPageCount()}
-                      disabled={isLoading}
+                      disabled={isFetching}
                     />
                     <span className="text-sm">of {table.getPageCount()}</span>
                   </div>
@@ -457,7 +419,7 @@ export function Instances() {
                     variant="outline"
                     size="sm"
                     onClick={() => table.nextPage()}
-                    disabled={!table.getCanNextPage() || isLoading}
+                    disabled={!table.getCanNextPage() || isFetching}
                   >
                     <ChevronRight className="h-4 w-4" />
                   </Button>
@@ -465,7 +427,7 @@ export function Instances() {
                     variant="outline"
                     size="sm"
                     onClick={() => table.setPageIndex(table.getPageCount() - 1)}
-                    disabled={!table.getCanNextPage() || isLoading}
+                    disabled={!table.getCanNextPage() || isFetching}
                   >
                     <ChevronsRight className="h-4 w-4" />
                   </Button>
@@ -495,12 +457,12 @@ export function Instances() {
         </CardContent>
       </Card>
 
-      {/* CyberArk Instance Form Dialog */}
-      <CyberArkInstanceForm
+      {/* Certificate Authority Form Dialog */}
+      <CertificateAuthorityForm
         open={showForm}
         onClose={handleFormClose}
         onSuccess={handleFormSuccess}
-        instance={selectedInstance}
+        certificateAuthority={selectedCA}
         onDelete={handleDeleteRequest}
       />
 
@@ -508,14 +470,17 @@ export function Instances() {
       <ConfirmationDialog
         open={showDeleteDialog}
         onOpenChange={setShowDeleteDialog}
-        title="Delete CyberArk Instance"
-        description={`Are you sure you want to delete "${instanceToDelete?.name}"? This action cannot be undone.`}
+        title="Delete Certificate Authority"
+        description={`Are you sure you want to delete "${caToDelete?.name}"? This action cannot be undone.`}
         confirmLabel="Delete"
         variant="destructive"
-        onConfirm={handleDelete}
+        onConfirm={() => {
+          if (caToDelete) {
+            deleteMutation.mutate(caToDelete.id);
+          }
+        }}
       />
+
     </PageContainer>
   );
 }
-
-export default Instances;

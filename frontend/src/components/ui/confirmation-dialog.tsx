@@ -7,7 +7,9 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from './alert-dialog.tsx';
+} from './alert-dialog';
+import { buttonVariants } from './button';
+import { cn } from '@/lib/utils';
 
 interface ConfirmationDialogProps {
   open: boolean;
@@ -41,11 +43,7 @@ export function ConfirmationDialog({
           <AlertDialogCancel>{cancelLabel}</AlertDialogCancel>
           <AlertDialogAction
             onClick={onConfirm}
-            className={
-              variant === 'destructive'
-                ? 'bg-red-600 hover:bg-red-700 focus:ring-red-600'
-                : ''
-            }
+            className={variant === 'destructive' ? cn(buttonVariants({ variant: 'destructive' })) : ''}
           >
             {confirmLabel}
           </AlertDialogAction>

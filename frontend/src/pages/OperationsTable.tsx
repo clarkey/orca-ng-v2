@@ -88,7 +88,7 @@ export default function OperationsTable() {
   }, [pagination, sorting]);
 
   // Fetch operations using React Query with next page prefetching
-  const { data: response, isLoading, refetch, isFetching, isPreviousData } = useOperations(queryParams, { prefetchNext: true });
+  const { data: response, isLoading, refetch, isFetching } = useOperations(queryParams, { prefetchNext: true });
   const cancelMutation = useCancelOperation();
   
   // Add fake instance data for visualization
@@ -555,9 +555,6 @@ export default function OperationsTable() {
                   disabled={isFetching}
                 />
                 <span className="text-sm">of {table.getPageCount()}</span>
-                {isPreviousData && (
-                  <span className="text-xs text-gray-500 ml-2">(Stale)</span>
-                )}
               </div>
               
               <Button

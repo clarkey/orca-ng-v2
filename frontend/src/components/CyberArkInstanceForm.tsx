@@ -51,10 +51,12 @@ const baseSchema = z.object({
 const createSchema = baseSchema.extend({
   password: z.string()
     .min(1, 'Password is required'),
+  skip_tls_verify: z.boolean().default(false),
 });
 
 const editSchema = baseSchema.extend({
   password: z.string().optional(),
+  skip_tls_verify: z.boolean().default(false),
 });
 
 type CreateFormData = z.infer<typeof createSchema>;
@@ -66,9 +68,10 @@ interface CyberArkInstanceFormProps {
   onClose: () => void;
   onSuccess: () => void;
   instance?: CyberArkInstance | null;
+  onDelete?: (instance: CyberArkInstance) => void;
 }
 
-export function CyberArkInstanceForm({ open, onClose, onSuccess, instance }: CyberArkInstanceFormProps) {
+export function CyberArkInstanceForm({ open, onClose, onSuccess, instance, onDelete }: CyberArkInstanceFormProps) {
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<TestConnectionResponse | null>(null);
   const [hasTestedSuccessfully, setHasTestedSuccessfully] = useState(false);
@@ -84,6 +87,7 @@ export function CyberArkInstanceForm({ open, onClose, onSuccess, instance }: Cyb
       username: '',
       password: '',
       concurrent_sessions: true,
+      skip_tls_verify: false,
     },
   });
 
@@ -97,6 +101,7 @@ export function CyberArkInstanceForm({ open, onClose, onSuccess, instance }: Cyb
           username: instance.username,
           password: '', // Password is never sent from backend
           concurrent_sessions: instance.concurrent_sessions ?? true,
+          skip_tls_verify: instance.skip_tls_verify ?? false,
         });
       } else {
         // Try to load saved values from localStorage for new instances
@@ -110,6 +115,7 @@ export function CyberArkInstanceForm({ open, onClose, onSuccess, instance }: Cyb
               username: parsed.username || '',
               password: '', // Never restore password
               concurrent_sessions: parsed.concurrent_sessions ?? true,
+              skip_tls_verify: parsed.skip_tls_verify ?? false,
             });
           } catch {
             // If parse fails, use defaults
@@ -119,6 +125,7 @@ export function CyberArkInstanceForm({ open, onClose, onSuccess, instance }: Cyb
               username: '',
               password: '',
               concurrent_sessions: true,
+              skip_tls_verify: false,
             });
           }
         } else {
@@ -128,6 +135,7 @@ export function CyberArkInstanceForm({ open, onClose, onSuccess, instance }: Cyb
             username: '',
             password: '',
             concurrent_sessions: true,
+            skip_tls_verify: false,
           });
         }
       }
@@ -168,6 +176,7 @@ export function CyberArkInstanceForm({ open, onClose, onSuccess, instance }: Cyb
         base_url: values.base_url,
         username: values.username,
         password: values.password || '',
+        skip_tls_verify: values.skip_tls_verify || false,
       });
       setTestResult(result);
       setHasTestedSuccessfully(result.success);
@@ -202,6 +211,7 @@ export function CyberArkInstanceForm({ open, onClose, onSuccess, instance }: Cyb
         if (values.username !== instance.username) updateData.username = values.username;
         if (values.password) updateData.password = values.password;
         if (values.concurrent_sessions !== instance.concurrent_sessions) updateData.concurrent_sessions = values.concurrent_sessions;
+        if (values.skip_tls_verify !== instance.skip_tls_verify) updateData.skip_tls_verify = values.skip_tls_verify;
 
         await updateMutation.mutateAsync({ id: instance.id, data: updateData });
       } else {
@@ -331,6 +341,13 @@ export function CyberArkInstanceForm({ open, onClose, onSuccess, instance }: Cyb
               description="Enable up to 300 simultaneous connections to this CyberArk instance (default: on)"
             />
 
+            <FormCheckbox
+              form={form}
+              name="skip_tls_verify"
+              label="Skip TLS certificate verification"
+              description="WARNING: This disables SSL/TLS certificate validation. Only use for testing with self-signed certificates."
+            />
+
             {/* Test Result */}
             {testResult && (
               <div className={cn(
@@ -364,6 +381,20 @@ export function CyberArkInstanceForm({ open, onClose, onSuccess, instance }: Cyb
             )}
 
               <DialogFooter className="gap-2 pt-6 mt-6 border-t">
+                {instance && onDelete && (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={() => {
+                      onClose(); // Close the form modal first
+                      onDelete(instance); // Then trigger the delete confirmation
+                    }}
+                    disabled={createMutation.isPending || updateMutation.isPending}
+                  >
+                    Delete
+                  </Button>
+                )}
+                
                 <Button
                   type="button"
                   variant="outline"
