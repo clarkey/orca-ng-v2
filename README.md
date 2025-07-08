@@ -1,123 +1,276 @@
 # ORCA - Orchestration for CyberArk
 
-ORCA is an application that wraps around the CyberArk self-hosted Privileged Access Management (PAM) system. It abstracts and aggregates permissions on safes within the CyberArk Vault into logical 'safe access roles'.
+ORCA is an enterprise orchestration platform for CyberArk's Privileged Access Management (PAM) system. It provides a modern interface for managing multiple CyberArk instances, abstracting safe permissions into logical access roles, and streamlining administrative operations.
 
-## Features
+## 🚀 Features
 
-- Multi-instance CyberArk management
-- Safe provisioning and access management
-- Integration with IGA products (SailPoint IIQ/IdentityNow)
-- Session-based authentication with Argon2id
-- Web UI and CLI administration tools
+### Core Capabilities
+- **Multi-Instance Management**: Manage multiple CyberArk PVWA instances from a single interface
+- **Asynchronous Operations**: Queue-based processing for long-running tasks with real-time status updates
+- **Safe Management**: Provision, modify, and delete safes with role-based access abstractions
+- **Access Control**: Grant and revoke permissions using logical groupings
+- **Data Synchronization**: Automated sync of safes, users, and groups from CyberArk
+- **IGA Integration**: Built for integration with SailPoint IIQ/IdentityNow
 
-## Architecture
+### User Interface
+- **Modern Web UI**: React-based SPA with responsive design
+- **Collapsible Sidebar**: Persistent navigation state for better screen utilization
+- **Real-time Updates**: Live operation status and pipeline metrics
+- **Dark Mode Ready**: Tailwind CSS v4 with theme support
+- **CLI Tool**: Command-line interface for automation and scripting
 
-- **Backend**: Go with Gin framework
-- **Frontend**: React with TypeScript, Vite, Shadcn UI, and TailWind CSS v4
-- **Database**: PostgreSQL
-- **Authentication**: Session-based with secure cookie storage
+## 🛠️ Technology Stack
 
-## Quick Start
+- **Backend**: Go 1.23 with Gin web framework
+- **Frontend**: React 18.3, TypeScript, Vite 6, Tailwind CSS v4
+- **Database**: PostgreSQL 16
+- **Authentication**: Session-based with Argon2id hashing
+- **UI Components**: Shadcn UI (Radix UI based)
+- **State Management**: TanStack Query (React Query)
+- **Validation**: Zod schemas with React Hook Form
 
-### Prerequisites
+## 📋 Prerequisites
 
-- Docker and Docker Compose
+- Docker and Docker Compose (for containerized deployment)
 - Go 1.23+ (for local development)
-- Node.js 20+ (for local development)
+- Node.js 20+ and npm 10+ (for frontend development)
+- PostgreSQL 16+ (for production deployment)
 
-### Running with Docker Compose
+## 🚀 Quick Start
 
-1. Clone the repository
-2. Start the services:
+### Using Docker Compose (Recommended)
+
+1. Clone the repository:
    ```bash
-   make build
-   make run
+   git clone https://github.com/your-org/orca-ng-v2.git
+   cd orca-ng-v2
    ```
 
-3. Access the application at http://localhost:5173
+2. Create environment file:
+   ```bash
+   cp .env.example .env
+   # Edit .env and set secure values for:
+   # - SESSION_SECRET (32-byte key)
+   # - ENCRYPTION_KEY (32-byte key)
+   ```
 
-Default credentials:
-- Username: `admin`
-- Password: `admin`
+3. Start the services:
+   ```bash
+   docker-compose up
+   ```
 
-**Important**: Change the default password immediately after first login.
+4. Access the application:
+   - Web UI: http://localhost:5173
+   - API: http://localhost:8080
 
-### Building from Source
+5. Login with default credentials:
+   - Username: `admin`
+   - Password: `admin123`
+
+   **⚠️ IMPORTANT**: Change the default password immediately after first login!
+
+### Manual Setup
+
+See [Development Setup](#development-setup) for detailed instructions.
+
+## 💻 CLI Usage
+
+The ORCA CLI provides administrative and automation capabilities:
 
 ```bash
-# Build both server and CLI
+# Install the CLI
+go install ./backend/cmd/cli
+
+# Login to ORCA
+orca-cli login --server http://localhost:8080
+
+# Check connection status
+orca-cli status
+
+# List users
+orca-cli users list
+
+# Create a new user
+orca-cli users create --username john.doe --email john@example.com
+
+# View configuration
+orca-cli config get
+
+# Logout
+orca-cli logout
+```
+
+Session tokens are stored securely:
+- **macOS**: `~/Library/Application Support/orca-cli/`
+- **Linux**: `~/.config/orca-cli/`
+- **Windows**: `%APPDATA%\orca-cli\`
+
+## 🏗️ Project Structure
+
+```
+orca-ng-v2/
+├── backend/
+│   ├── cmd/
+│   │   ├── server/        # Main API server
+│   │   └── cli/           # CLI application
+│   ├── internal/
+│   │   ├── api/           # HTTP handlers
+│   │   ├── config/        # Configuration
+│   │   ├── database/      # Database layer
+│   │   ├── models/        # Data models
+│   │   ├── pipeline/      # Async processing
+│   │   └── services/      # Business logic
+│   └── pkg/               # Reusable packages
+├── frontend/
+│   ├── src/
+│   │   ├── api/           # API client
+│   │   ├── components/    # React components
+│   │   ├── hooks/         # Custom hooks
+│   │   ├── pages/         # Route pages
+│   │   └── lib/           # Utilities
+│   └── public/            # Static assets
+├── migrations/            # Database migrations
+├── scripts/               # Build and deployment scripts
+└── docker-compose.yml     # Development environment
+```
+
+## 🔧 Development Setup
+
+### Backend Development
+
+1. Install dependencies:
+   ```bash
+   cd backend
+   go mod download
+   ```
+
+2. Set up environment:
+   ```bash
+   export DATABASE_URL="postgres://orca:orca@localhost:5432/orca?sslmode=disable"
+   export SESSION_SECRET="your-32-byte-session-secret-here"
+   export ENCRYPTION_KEY="your-32-byte-encryption-key-here"
+   ```
+
+3. Run migrations:
+   ```bash
+   make migrate-up
+   ```
+
+4. Start the server with hot reload:
+   ```bash
+   air
+   ```
+
+### Frontend Development
+
+1. Install dependencies:
+   ```bash
+   cd frontend
+   npm install
+   ```
+
+2. Start development server:
+   ```bash
+   npm run dev
+   ```
+
+3. Run tests:
+   ```bash
+   npm run test
+   npm run lint
+   npm run type-check
+   ```
+
+### Building for Production
+
+```bash
+# Build everything
 ./scripts/build.sh
 
 # Or build individually
 cd backend
-go build -o orca ./cmd/orca
-go build -o orca-cli ./cmd/orca-cli
+make build
+
+cd ../frontend
+npm run build
 ```
 
-## CLI Usage
+## 🔒 Security Considerations
 
-The ORCA CLI provides administrative access to the system:
+- **Authentication**: Session-based with secure HTTP-only cookies
+- **Password Security**: Argon2id hashing with salt
+- **Data Encryption**: AES-256-GCM for sensitive data (CyberArk passwords)
+- **ID Generation**: ULID with semantic prefixes for traceability
+- **Input Validation**: Comprehensive validation on both frontend and backend
+- **CORS**: Configured for development, requires production configuration
+- **HTTPS**: Required for production deployment
 
+## 📊 Monitoring and Operations
+
+### Pipeline Metrics
+- View real-time metrics at `/pipeline`
+- Monitor operation queues and processing rates
+- Track success/failure rates by operation type
+
+### Logging
+- Structured logging with Logrus
+- Log levels: DEBUG, INFO, WARN, ERROR
+- Correlation IDs for request tracing
+
+### Health Checks
+- `/api/health` - Basic health check
+- `/api/health/ready` - Readiness probe (checks DB connection)
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes using conventional commits (`git commit -m 'feat: add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+### Code Style
+- **Go**: Follow standard Go conventions and `gofmt`
+- **TypeScript**: Use strict mode and follow ESLint rules
+- **React**: Functional components with TypeScript
+- **Git**: Conventional commits (feat:, fix:, docs:, etc.)
+
+## 📝 API Documentation
+
+API documentation is available at `/api/docs` when running in development mode.
+
+Key endpoints:
+- `POST /api/auth/login` - Web authentication
+- `GET /api/cyberark/instances` - List CyberArk instances
+- `GET /api/operations` - List operations with filtering
+- `GET /api/pipeline/metrics` - Real-time pipeline metrics
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+1. **Port conflicts**: Ensure ports 5173, 8080, and 5432 are available
+2. **Database connection**: Check DATABASE_URL and PostgreSQL status
+3. **Session issues**: Clear cookies and browser cache
+4. **Build failures**: Ensure Go 1.23+ and Node.js 20+ are installed
+
+### Debug Mode
+
+Enable debug logging:
 ```bash
-# Login to ORCA
-./orca-cli login -s http://localhost:8080
-
-# Check session status
-./orca-cli status
-
-# Logout
-./orca-cli logout
+export LOG_LEVEL=debug
 ```
 
-Session tokens are stored securely in:
-- macOS: `~/Library/Application Support/orca-cli/`
-- Linux: `~/.config/orca-cli/`
-- Windows: `%APPDATA%\orca-cli\`
-
-## Development
-
-### Backend Development
-
-The backend uses Air for hot reloading:
-
-```bash
-cd backend
-air
-```
-
-### Frontend Development
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-### Database Migrations
-
-Migrations are automatically applied when the PostgreSQL container starts. Additional migrations can be added to the `migrations/` directory.
-
-## Project Structure
-
-```
-├── backend/
-│   ├── cmd/
-│   │   ├── orca/          # Main server
-│   │   └── orca-cli/      # CLI tool
-│   ├── internal/          # Internal packages
-│   └── pkg/               # Reusable packages
-├── frontend/              # React application
-├── migrations/            # Database migrations
-└── docker-compose.yml     # Development environment
-```
-
-## Security Notes
-
-- All IDs use ULID with appropriate prefixes (e.g., `usr_`, `ses_`)
-- Passwords are hashed using Argon2id
-- Sessions expire after 24 hours by default
-- HTTPS should be used in production
-
-## License
+## 📜 License
 
 [License information to be added]
+
+## 🙏 Acknowledgments
+
+- Built with ❤️ for CyberArk administrators
+- Inspired by modern DevOps practices
+- Powered by open-source technologies
+
+---
+
+For more detailed information, see [CLAUDE.md](./CLAUDE.md) for development guidelines and architecture details.

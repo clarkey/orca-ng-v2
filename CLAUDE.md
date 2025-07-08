@@ -1,36 +1,141 @@
 # ORCA - Orchestration for CyberArk
 
 ## Project Overview
-ORCA is an application that wraps around the CyberArk self-hosted Privileged Access Management (PAM) system. It abstracts/aggregates permissions on safes within the CyberArk Vault into logical 'safe access roles'.
+ORCA is an enterprise application that provides orchestration and management capabilities for CyberArk's self-hosted Privileged Access Management (PAM) system. It abstracts and aggregates permissions on safes within the CyberArk Vault into logical 'safe access roles', providing a modern interface for CyberArk administrators.
 
 ### Key Features
-- Provision safes
-- Manage safe access
-- Multi-instance CyberArk management
-- Integration with IGA products (SailPoint IIQ/IdentityNow)
-- Periodic data refresh from CyberArk (safes, users, groups)
-- All communication via CyberArk REST API
+- **Multi-Instance Management**: Support for multiple CyberArk PVWA instances
+- **Operations Pipeline**: Asynchronous task processing with priority queues
+- **Safe Management**: Provision, modify, and delete safes
+- **Access Control**: Grant and revoke permissions with role-based abstractions
+- **Data Synchronization**: Periodic refresh of safes, users, and groups from CyberArk
+- **Real-time Monitoring**: Pipeline metrics and operation status tracking
+- **IGA Integration**: Designed for integration with SailPoint IIQ/IdentityNow
+- **RESTful API**: All CyberArk communication via REST API
 
 ### Technical Stack
-- **Backend**: Golang with GIN framework (API-first approach)
-- **Logging**: Logrus
-- **Frontend**: SPA embedded in Go binary
-  - Shadcn UI
-  - TailWind v4
-  - Vite
+- **Backend**: Go 1.23 with Gin framework (API-first approach)
+- **Database**: PostgreSQL 16 with pgx/v5 driver
+- **Frontend**: React 18.3 SPA embedded in Go binary
+  - Vite 6 build tool
   - TypeScript
-- **Database**: PostgreSQL
-- **Authentication**: Session-based with Argon2id
-- **IDs**: ULID with appropriate prefixes (like Stripe)
-- **CLI**: Separate admin CLI with cross-platform session token storage
+  - Tailwind CSS v4
+  - Shadcn UI (Radix UI based components)
+  - TanStack Query (React Query) for state management
+  - React Router v7
+  - React Hook Form + Zod validation
+- **Authentication**: Session-based with Argon2id password hashing
+- **Encryption**: AES-256-GCM for sensitive data
+- **IDs**: ULID with semantic prefixes (usr_, ses_, cai_, op_, cfg_)
+- **CLI**: Cobra-based admin tool with cross-platform session storage
+- **Logging**: Logrus with structured logging
+- **Configuration**: Viper for config management
 
 ### Architecture Notes
-- Not a user-facing application
-- Designed for CyberArk Administrators
-- Improves upon vendor SCIM solutions
-- All components use latest LTS versions
+- **Target Users**: CyberArk Administrators (not end users)
+- **Design Philosophy**: Improves upon vendor SCIM solutions
+- **Deployment**: Single binary with embedded frontend for production
+- **Async Processing**: Pipeline architecture for long-running operations
+- **Multi-tenancy**: Support for multiple CyberArk environments
+- **Session Management**: Concurrent session support for CyberArk
+
+### Current Implementation Status
+
+#### ✅ Completed
+- Authentication system (web + CLI)
+- Session management with secure storage
+- CyberArk instance management (CRUD + connection testing)
+- Operations pipeline framework
+- Collapsible sidebar with persistent state
+- Real-time pipeline metrics
+- Base UI structure with routing
+
+#### 🚧 In Progress
+- Dashboard implementation
+- Safe management operations
+- User and group synchronization
+- Access role definitions
+- Settings pages (SSO, notifications, etc.)
+
+#### 📋 Planned
+- IGA integration endpoints
+- Audit logging system
+- Advanced search and filtering
+- Bulk operations support
+- Role-based access control
+- API rate limiting
 
 ### Development Setup
-- Docker Compose for local development
-- Session-based authentication backed by PostgreSQL
-- CLI supports macOS, Windows, and Linux session storage
+```bash
+# Start all services
+docker-compose up
+
+# Backend runs on http://localhost:8080
+# Frontend dev server runs on http://localhost:5175
+# PostgreSQL on localhost:5432
+
+# Default admin credentials
+Username: admin
+Password: admin123 (CHANGE THIS!)
+```
+
+### Environment Variables
+- `DATABASE_URL`: PostgreSQL connection string
+- `SESSION_SECRET`: Session encryption key (32 bytes)
+- `ENCRYPTION_KEY`: Data encryption key (32 bytes)
+- `LOG_LEVEL`: debug, info, warn, error
+- `APP_ENV`: development, production
+
+### Security Considerations
+- Change default admin password immediately
+- Generate strong SESSION_SECRET and ENCRYPTION_KEY
+- Configure CORS for production
+- Implement HTTPS in production
+- Review and implement rate limiting
+- Enable audit logging for compliance
+
+### Testing Strategy
+- Unit tests: `make test`
+- Integration tests: `make test-integration`
+- E2E tests: (planned)
+- Security scanning: (planned)
+
+### Important Notes for Development
+1. All database IDs use ULID with semantic prefixes
+2. Frontend is embedded in binary for production builds
+3. Operations are async - use the pipeline for long-running tasks
+4. Always validate input on both frontend (Zod) and backend
+5. Follow existing patterns for new features
+6. Use structured logging with appropriate log levels
+7. Maintain backwards compatibility for API changes
+
+### Common Development Commands
+```bash
+# Backend
+cd backend
+go run cmd/server/main.go          # Run server
+go run cmd/cli/main.go             # Run CLI
+make build                         # Build binaries
+make migrate-up                    # Run migrations
+
+# Frontend
+cd frontend
+npm run dev                        # Development server
+npm run build                      # Production build
+npm run lint                       # Run linting
+npm run type-check                 # TypeScript checks
+
+# CLI Usage
+orca-cli login                     # Authenticate
+orca-cli status                    # Check connection
+orca-cli users list               # List users
+orca-cli config get               # View config
+```
+
+### Code Style Guidelines
+- Go: Follow standard Go conventions
+- TypeScript: Use TypeScript strict mode
+- React: Functional components with hooks
+- CSS: Tailwind utility classes, avoid custom CSS
+- Git: Conventional commits (feat:, fix:, chore:, etc.)
+- Comments: Explain "why" not "what"
