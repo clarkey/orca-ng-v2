@@ -10,10 +10,22 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	
+	"github.com/orca-ng/orca/internal/services"
 )
 
 // HTTPClientFactory is a function that creates an HTTP client
 type HTTPClientFactory func() (*http.Client, error)
+
+// Config holds client configuration
+type Config struct {
+	BaseURL        string
+	Username       string
+	Password       string
+	SkipTLSVerify  bool
+	RequestTimeout time.Duration
+	CertManager    *services.CertificateManager
+}
 
 // Client represents a CyberArk API client
 type Client struct {
@@ -24,22 +36,56 @@ type Client struct {
 	httpClientFactory HTTPClientFactory
 	token             string
 	skipTLSVerify     bool
+	certManager       *services.CertificateManager
 }
 
-// NewClient creates a new CyberArk client
-func NewClient(baseURL, username, password string) *Client {
+// NewClient creates a new CyberArk client with configuration
+func NewClient(cfg Config) (*Client, error) {
 	// Ensure baseURL ends without trailing slash
-	baseURL = strings.TrimRight(baseURL, "/")
+	cfg.BaseURL = strings.TrimRight(cfg.BaseURL, "/")
+	
+	// Validate URL
+	if err := ValidateURL(cfg.BaseURL); err != nil {
+		return nil, err
+	}
+	
+	// Default timeout
+	if cfg.RequestTimeout == 0 {
+		cfg.RequestTimeout = 30 * time.Second
+	}
+	
+	// Create HTTP client with custom TLS config
+	httpClient := &http.Client{
+		Timeout: cfg.RequestTimeout,
+	}
+	
+	// Configure TLS
+	if cfg.SkipTLSVerify || cfg.CertManager != nil {
+		tlsConfig := &tls.Config{
+			InsecureSkipVerify: cfg.SkipTLSVerify,
+		}
+		
+		// Add custom CA if certificate manager is provided
+		if cfg.CertManager != nil {
+			pool, err := cfg.CertManager.GetCertPool(context.Background())
+			if err == nil && pool != nil {
+				tlsConfig.RootCAs = pool
+			}
+		}
+		
+		httpClient.Transport = &http.Transport{
+			TLSClientConfig: tlsConfig,
+		}
+	}
 	
 	return &Client{
-		baseURL:  baseURL,
-		username: username,
-		password: password,
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
-		skipTLSVerify: false,
-	}
+		baseURL:       cfg.BaseURL,
+		username:      cfg.Username,
+		password:      cfg.Password,
+		httpClient:    httpClient,
+		skipTLSVerify: cfg.SkipTLSVerify,
+		certManager:   cfg.CertManager,
+	}, nil
 }
 
 // NewClientWithTLSConfig creates a new CyberArk client with custom TLS configuration
@@ -82,12 +128,14 @@ func NewClientWithHTTPClientFactory(baseURL, username, password string, factory 
 	}
 }
 
-// TestConnection tests the connection to CyberArk by attempting to authenticate
-func (c *Client) TestConnection(ctx context.Context) (bool, string, error) {
-	startTime := time.Now()
-	
+// Authenticate authenticates with CyberArk and returns the session token
+func (c *Client) Authenticate() (string, error) {
+	return c.AuthenticateWithContext(context.Background())
+}
+
+// AuthenticateWithContext authenticates with CyberArk using the provided context
+func (c *Client) AuthenticateWithContext(ctx context.Context) (string, error) {
 	// Prepare the authentication request
-	// Note: baseURL should already include the full path (e.g., https://server/PasswordVault)
 	authURL := fmt.Sprintf("%s/API/auth/Cyberark/Logon", c.baseURL)
 	
 	payload := map[string]string{
@@ -97,66 +145,85 @@ func (c *Client) TestConnection(ctx context.Context) (bool, string, error) {
 	
 	jsonData, err := json.Marshal(payload)
 	if err != nil {
-		return false, "", fmt.Errorf("failed to marshal auth payload: %w", err)
+		return "", fmt.Errorf("failed to marshal auth payload: %w", err)
 	}
 	
 	req, err := http.NewRequestWithContext(ctx, "POST", authURL, bytes.NewReader(jsonData))
 	if err != nil {
-		return false, "", fmt.Errorf("failed to create request: %w", err)
+		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 	
 	req.Header.Set("Content-Type", "application/json")
 	
-	// Get HTTP client (use factory if available)
-	httpClient := c.httpClient
-	if c.httpClientFactory != nil {
-		client, err := c.httpClientFactory()
-		if err != nil {
-			return false, "", fmt.Errorf("failed to create HTTP client: %w", err)
-		}
-		httpClient = client
-	}
+	// Get HTTP client
+	httpClient := c.getHTTPClient()
 	
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return false, "", fmt.Errorf("failed to connect to CyberArk: %w", err)
+		return "", fmt.Errorf("failed to connect to CyberArk: %w", err)
 	}
 	defer resp.Body.Close()
+	
+	// Check the response
+	if resp.StatusCode != http.StatusOK {
+		switch resp.StatusCode {
+		case http.StatusUnauthorized:
+			return "", fmt.Errorf("authentication failed: invalid username or password")
+		case http.StatusForbidden:
+			return "", fmt.Errorf("authentication failed: user is not authorized")
+		case http.StatusNotFound:
+			return "", fmt.Errorf("invalid CyberArk URL or API endpoint not found")
+		default:
+			return "", fmt.Errorf("authentication failed with status code: %d", resp.StatusCode)
+		}
+	}
+	
+	// Parse the response to get the token
+	var authResp map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&authResp); err != nil {
+		return "", fmt.Errorf("failed to decode auth response: %w", err)
+	}
+	
+	token, ok := authResp["CyberArkLogonResult"].(string)
+	if !ok || token == "" {
+		return "", fmt.Errorf("no token in auth response")
+	}
+	
+	c.token = token
+	return token, nil
+}
+
+// TestConnection tests the connection to CyberArk by attempting to authenticate
+func (c *Client) TestConnection(ctx context.Context) (bool, string, error) {
+	startTime := time.Now()
+	
+	// Try to authenticate
+	token, err := c.AuthenticateWithContext(ctx)
+	if err != nil {
+		return false, err.Error(), err
+	}
 	
 	// Calculate response time
 	responseTime := time.Since(startTime).Milliseconds()
 	
-	// Check the response
-	if resp.StatusCode == http.StatusOK {
-		// Parse the response to get the token
-		var authResp map[string]interface{}
-		if err := json.NewDecoder(resp.Body).Decode(&authResp); err == nil {
-			if token, ok := authResp["CyberArkLogonResult"].(string); ok {
-				c.token = token
-				// Log off immediately after successful test
-				c.Logoff(ctx)
-			}
-		}
-		
-		message := fmt.Sprintf("Successfully connected to CyberArk at %s (Response time: %dms)", c.baseURL, responseTime)
-		return true, message, nil
+	// Log off immediately after successful test
+	c.token = token
+	if err := c.LogoffWithContext(ctx); err != nil {
+		// Log warning but don't fail the test
+		// This would normally be logged by the logger if we had one
 	}
 	
-	// Handle different error codes
-	switch resp.StatusCode {
-	case http.StatusUnauthorized:
-		return false, "Authentication failed: Invalid username or password", nil
-	case http.StatusForbidden:
-		return false, "Authentication failed: User is not authorized", nil
-	case http.StatusNotFound:
-		return false, "Invalid CyberArk URL or API endpoint not found", nil
-	default:
-		return false, fmt.Sprintf("Connection failed with status code: %d", resp.StatusCode), nil
-	}
+	message := fmt.Sprintf("Successfully connected to CyberArk at %s (Response time: %dms)", c.baseURL, responseTime)
+	return true, message, nil
 }
 
 // Logoff logs off from CyberArk
-func (c *Client) Logoff(ctx context.Context) error {
+func (c *Client) Logoff() error {
+	return c.LogoffWithContext(context.Background())
+}
+
+// LogoffWithContext logs off from CyberArk using the provided context
+func (c *Client) LogoffWithContext(ctx context.Context) error {
 	if c.token == "" {
 		return nil
 	}
@@ -170,15 +237,8 @@ func (c *Client) Logoff(ctx context.Context) error {
 	
 	req.Header.Set("Authorization", c.token)
 	
-	// Get HTTP client (use factory if available)
-	httpClient := c.httpClient
-	if c.httpClientFactory != nil {
-		client, err := c.httpClientFactory()
-		if err != nil {
-			return fmt.Errorf("failed to create HTTP client: %w", err)
-		}
-		httpClient = client
-	}
+	// Get HTTP client
+	httpClient := c.getHTTPClient()
 	
 	resp, err := httpClient.Do(req)
 	if err != nil {
@@ -189,6 +249,33 @@ func (c *Client) Logoff(ctx context.Context) error {
 	c.token = ""
 	return nil
 }
+
+// GetToken returns the current authentication token
+func (c *Client) GetToken() string {
+	return c.token
+}
+
+// SetToken sets the authentication token (useful for session reuse)
+func (c *Client) SetToken(token string) {
+	c.token = token
+}
+
+// IsAuthenticated checks if the client has an authentication token
+func (c *Client) IsAuthenticated() bool {
+	return c.token != ""
+}
+
+// getHTTPClient returns the appropriate HTTP client
+func (c *Client) getHTTPClient() *http.Client {
+	if c.httpClientFactory != nil {
+		client, err := c.httpClientFactory()
+		if err == nil {
+			return client
+		}
+	}
+	return c.httpClient
+}
+
 
 // ValidateURL validates that the provided URL is a valid CyberArk PVWA URL
 func ValidateURL(baseURL string) error {

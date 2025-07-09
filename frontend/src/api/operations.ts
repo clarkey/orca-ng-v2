@@ -38,6 +38,9 @@ export interface Operation {
   created_by_user?: UserInfo;
   cyberark_instance_id?: string;
   cyberark_instance_info?: CyberArkInstanceInfo;
+  // TODO: Add these fields to track who cancelled an operation
+  // cancelled_by?: string;
+  // cancelled_by_user?: UserInfo;
 }
 
 
@@ -122,7 +125,41 @@ export const operationsApi = {
     page?: number;
     page_size?: number;
   }): Promise<OperationsListResponse> => {
-    return await apiClient.get<OperationsListResponse>('/operations', { params });
+    const response = await apiClient.get<OperationsListResponse>('/operations', { params });
+    
+    // Add a mock future operation for demo purposes
+    const futureDate = new Date();
+    futureDate.setHours(futureDate.getHours() + 3); // 3 hours from now
+    
+    const mockFutureOperation: Operation = {
+      id: 'op_mock_future_123',
+      type: 'safe_provision',
+      priority: 'high',
+      status: 'pending',
+      scheduled_at: futureDate.toISOString(),
+      created_at: new Date().toISOString(),
+      payload: {
+        safe_name: 'PROD-DB-ACCESS',
+        description: 'Production database access safe',
+        retention_days: 90
+      },
+      created_by: 'usr_admin',
+      created_by_user: {
+        id: 'usr_admin',
+        username: 'admin'
+      },
+      cyberark_instance_id: 'cai_prod',
+      cyberark_instance_info: {
+        id: 'cai_prod',
+        name: 'Production CyberArk'
+      }
+    };
+    
+    // Insert at the beginning of the list
+    response.operations.unshift(mockFutureOperation);
+    response.pagination.total_count += 1;
+    
+    return response;
   },
   
   // Get operation statistics
@@ -136,6 +173,11 @@ export const operationsApi = {
   // Cancel an operation
   cancel: async (id: string): Promise<void> => {
     await apiClient.post<void>(`/operations/${id}/cancel`);
+  },
+
+  // Update operation priority
+  updatePriority: async (id: string, priority: Priority): Promise<void> => {
+    await apiClient.patch<void>(`/operations/${id}/priority`, { priority });
   },
 
   // Get pipeline metrics
@@ -186,7 +228,7 @@ export function getStatusColor(status: Status): string {
     processing: 'text-blue-600 bg-blue-100',
     completed: 'text-green-600 bg-green-100',
     failed: 'text-red-600 bg-red-100',
-    cancelled: 'text-orange-600 bg-orange-100',
+    cancelled: 'text-amber-600 bg-amber-100',
   };
   return colors[status] || 'text-gray-600 bg-gray-100';
 }

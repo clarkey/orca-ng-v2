@@ -66,13 +66,27 @@ ORCA is an enterprise application that provides orchestration and management cap
 - API rate limiting
 
 ### Development Setup
+
+⚠️ **IMPORTANT: All services run in Docker containers!** ⚠️
+- NEVER run `npm run dev` or `go run` directly on the host
+- ALWAYS use `docker-compose` commands
+- Frontend and backend are containerized services
+
 ```bash
-# Start all services
+# Start all services (frontend, backend, postgres)
 docker-compose up
 
-# Backend runs on http://localhost:8080
-# Frontend dev server runs on http://localhost:5175
-# PostgreSQL on localhost:5432
+# Backend runs on http://localhost:8080 (in container)
+# Frontend dev server runs on http://localhost:5173 (in container, NOT 5175)
+# PostgreSQL on localhost:5432 (in container)
+
+# View logs
+docker-compose logs -f frontend  # Frontend logs
+docker-compose logs -f backend   # Backend logs
+
+# Restart a specific service
+docker-compose restart frontend  # To pick up frontend changes
+docker-compose restart backend   # To pick up backend changes
 
 # Default admin credentials
 Username: admin
@@ -110,20 +124,25 @@ Password: admin123 (CHANGE THIS!)
 7. Maintain backwards compatibility for API changes
 
 ### Common Development Commands
-```bash
-# Backend
-cd backend
-go run cmd/server/main.go          # Run server
-go run cmd/cli/main.go             # Run CLI
-make build                         # Build binaries
-make migrate-up                    # Run migrations
 
-# Frontend
-cd frontend
-npm run dev                        # Development server
-npm run build                      # Production build
-npm run lint                       # Run linting
-npm run type-check                 # TypeScript checks
+⚠️ **REMINDER: Everything runs in Docker!** ⚠️
+
+```bash
+# Docker commands (use these!)
+docker-compose up                  # Start all services
+docker-compose down                # Stop all services
+docker-compose restart frontend    # Restart frontend after changes
+docker-compose restart backend     # Restart backend after changes
+docker-compose exec backend bash   # Shell into backend container
+docker-compose exec frontend sh    # Shell into frontend container
+
+# If you need to run commands, do it INSIDE the container:
+docker-compose exec backend go run cmd/cli/main.go
+docker-compose exec frontend npm run lint
+
+# Build commands (still use docker-compose)
+docker-compose build frontend      # Rebuild frontend image
+docker-compose build backend       # Rebuild backend image
 
 # CLI Usage
 orca-cli login                     # Authenticate

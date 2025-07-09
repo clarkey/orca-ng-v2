@@ -107,11 +107,11 @@ func (s *Store) ListOperations(ctx context.Context, filters ListOperationsFilter
 	}
 	
 	// Search filter - uses full-text search with fallback to fuzzy matching
-	if filters.Search != nil && *filters.Search != "" {
-		searchPattern := "%" + *filters.Search + "%"
+	if filters.Search != "" {
+		searchPattern := "%" + filters.Search + "%"
 		query = query.Where(
 			"search_vector @@ plainto_tsquery('english', ?) OR id ILIKE ? OR type::text ILIKE ?",
-			*filters.Search, searchPattern, searchPattern,
+			filters.Search, searchPattern, searchPattern,
 		)
 	}
 	
@@ -134,7 +134,7 @@ func (s *Store) ListOperations(ctx context.Context, filters ListOperationsFilter
 	}
 	
 	// Add ordering
-	if filters.SortBy != nil && filters.SortOrder != nil {
+	if filters.SortBy != "" && filters.SortOrder != "" {
 		// Validate sort column to prevent SQL injection
 		validColumns := map[string]bool{
 			"id":         true,
@@ -144,12 +144,12 @@ func (s *Store) ListOperations(ctx context.Context, filters ListOperationsFilter
 			"created_at": true,
 		}
 		
-		if validColumns[*filters.SortBy] {
+		if validColumns[filters.SortBy] {
 			order := "ASC"
-			if *filters.SortOrder == "desc" {
+			if filters.SortOrder == "desc" {
 				order = "DESC"
 			}
-			query = query.Order(fmt.Sprintf("%s %s", *filters.SortBy, order))
+			query = query.Order(fmt.Sprintf("%s %s", filters.SortBy, order))
 		} else {
 			query = query.Order("created_at DESC")
 		}
@@ -207,11 +207,11 @@ func (s *Store) CountOperations(ctx context.Context, filters ListOperationsFilte
 	}
 	
 	// Search filter
-	if filters.Search != nil && *filters.Search != "" {
-		searchPattern := "%" + *filters.Search + "%"
+	if filters.Search != "" {
+		searchPattern := "%" + filters.Search + "%"
 		query = query.Where(
 			"search_vector @@ plainto_tsquery('english', ?) OR id ILIKE ? OR type::text ILIKE ?",
-			*filters.Search, searchPattern, searchPattern,
+			filters.Search, searchPattern, searchPattern,
 		)
 	}
 	
@@ -328,7 +328,7 @@ func (s *Store) GetOperationStats(ctx context.Context, startDate, endDate *time.
 	
 	for _, hc := range hourlyCounts {
 		stats.ByHour = append(stats.ByHour, HourlyStats{
-			Hour:  hc.Hour,
+			Hour:  hc.Hour.Format("2006-01-02 15:04:05"),
 			Count: hc.Count,
 		})
 	}
@@ -354,7 +354,7 @@ func (s *Store) GetOperationStats(ctx context.Context, startDate, endDate *time.
 		stats.AvgWaitTime = *times.AvgWaitTime
 	}
 	if times.AvgProcessTime != nil {
-		stats.AvgProcessTime = *times.AvgProcessTime
+		stats.AvgProcTime = *times.AvgProcessTime
 	}
 	
 	return stats, nil

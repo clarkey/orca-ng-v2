@@ -15,6 +15,7 @@ import (
 	"github.com/orca-ng/orca/internal/database"
 	"github.com/orca-ng/orca/internal/handlers"
 	"github.com/orca-ng/orca/internal/middleware"
+	"github.com/orca-ng/orca/internal/pipeline"
 	"github.com/orca-ng/orca/internal/services"
 	"github.com/sirupsen/logrus"
 )
@@ -108,6 +109,29 @@ func main() {
 	// Initialize certificate manager
 	certManager := services.NewCertificateManager(db, logrus.StandardLogger())
 	
+	// Initialize pipeline processor
+	pipelineConfig := &pipeline.PipelineConfig{
+		TotalCapacity:      1, // Process one operation at a time
+		DefaultTimeout:     300, // 5 minutes default
+		OperationTimeouts:  make(map[pipeline.OperationType]int),
+		RetryPolicy: pipeline.RetryPolicy{
+			MaxAttempts: 3,
+		},
+	}
+	
+	processor := pipeline.NewSimpleProcessor(db, pipelineConfig, logrus.StandardLogger(), certManager, encryptionKey)
+	
+	// Register operation handlers
+	// TODO: Register actual handlers for each operation type
+	// processor.RegisterHandler(pipeline.OpTypeSafeProvision, &handlers.SafeProvisionHandler{})
+	// processor.RegisterHandler(pipeline.OpTypeAccessGrant, &handlers.AccessGrantHandler{})
+	// etc.
+	
+	// Start the processor
+	if err := processor.Start(ctx); err != nil {
+		logrus.WithError(err).Fatal("Failed to start pipeline processor")
+	}
+	
 	cyberarkHandler := handlers.NewCyberArkInstancesHandler(db, logrus.StandardLogger(), encryptionKey, certManager)
 	certAuthHandler := handlers.NewCertificateAuthoritiesHandler(db, logrus.StandardLogger(), certManager)
 	operationsHandler := handlers.NewOperationsHandler(db, logrus.StandardLogger())
@@ -144,6 +168,7 @@ func main() {
 			protected.GET("/operations/:id", operationsHandler.GetOperation)
 			protected.POST("/operations", operationsHandler.CreateOperation)
 			protected.POST("/operations/:id/cancel", operationsHandler.CancelOperation)
+			protected.PATCH("/operations/:id/priority", operationsHandler.UpdatePriority)
 			
 			// CyberArk instances routes
 			protected.GET("/cyberark/instances", cyberarkHandler.ListInstances)
@@ -225,6 +250,15 @@ func main() {
 	<-quit
 	logrus.Info("Shutting down server...")
 
+	// Cancel context to signal shutdown
+	cancel()
+	
+	// Stop the pipeline processor
+	logrus.Info("Stopping pipeline processor...")
+	if err := processor.Stop(); err != nil {
+		logrus.WithError(err).Error("Failed to stop pipeline processor gracefully")
+	}
+	
 	// Graceful shutdown with timeout
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer shutdownCancel()

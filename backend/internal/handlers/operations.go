@@ -294,3 +294,50 @@ func (h *OperationsHandler) operationToResponse(op *gormmodels.Operation) interf
 	
 	return resp
 }
+
+// UpdatePriority updates the priority of an operation
+func (h *OperationsHandler) UpdatePriority(c *gin.Context) {
+	id := c.Param("id")
+	
+	var req struct {
+		Priority string `json:"priority" binding:"required,oneof=low normal high"`
+	}
+	
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	
+	// Get the operation
+	var operation gormmodels.Operation
+	if err := h.db.First(&operation, "id = ?", id).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Operation not found"})
+			return
+		}
+		h.logger.WithError(err).Error("Failed to get operation")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get operation"})
+		return
+	}
+	
+	// Check if operation can be updated (only pending or processing)
+	if operation.Status != gormmodels.OpStatusPending && operation.Status != gormmodels.OpStatusProcessing {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Can only update priority for pending or processing operations"})
+		return
+	}
+	
+	// Update priority
+	if err := h.db.Model(&operation).Update("priority", req.Priority).Error; err != nil {
+		h.logger.WithError(err).Error("Failed to update operation priority")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update priority"})
+		return
+	}
+	
+	h.logger.WithFields(logrus.Fields{
+		"operation_id": operation.ID,
+		"old_priority": operation.Priority,
+		"new_priority": req.Priority,
+	}).Info("Operation priority updated")
+	
+	c.JSON(http.StatusOK, gin.H{"message": "Priority updated successfully"})
+}

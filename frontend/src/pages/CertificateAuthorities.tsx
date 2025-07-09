@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   useReactTable,
@@ -33,15 +34,13 @@ import {
 } from '@/components/ui/table';
 import { PageContainer } from '@/components/PageContainer';
 import { PageHeader } from '@/components/PageHeader';
-import { CertificateAuthorityForm } from '@/components/CertificateAuthorityForm';
 import { ConfirmationDialog } from '@/components/ui/confirmation-dialog';
 
 const STORAGE_KEY_PAGE_SIZE = 'orca-certificate-authorities-page-size';
 
 export function CertificateAuthorities() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [selectedCA, setSelectedCA] = useState<CertificateAuthorityInfo | null>(null);
-  const [showForm, setShowForm] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [caToDelete, setCaToDelete] = useState<CertificateAuthorityInfo | null>(null);
   
@@ -263,18 +262,7 @@ export function CertificateAuthorities() {
   });
 
   const handleEdit = (ca: CertificateAuthorityInfo) => {
-    setSelectedCA(ca);
-    setShowForm(true);
-  };
-
-  const handleFormClose = () => {
-    setShowForm(false);
-    setSelectedCA(null);
-  };
-
-  const handleFormSuccess = () => {
-    refetch();
-    handleFormClose();
+    navigate(`/settings/certificates/${ca.id}/edit`);
   };
 
   const handleDeleteRequest = (ca: CertificateAuthorityInfo) => {
@@ -308,7 +296,7 @@ export function CertificateAuthorities() {
         title="Certificate Authorities"
         description="Manage trusted certificate authorities for secure connections. Supports single certificates and certificate chains."
         actions={
-          <Button onClick={() => setShowForm(true)}>
+          <Button onClick={() => navigate('/settings/certificates/add')}>
             <Plus className="mr-2 h-4 w-4" />
             Add Certificate
           </Button>
@@ -335,7 +323,7 @@ export function CertificateAuthorities() {
               <p className="text-sm text-gray-500 mb-6">
                 Add certificate authorities to establish secure connections
               </p>
-              <Button onClick={() => setShowForm(true)}>
+              <Button onClick={() => navigate('/settings/certificates/add')}>
                 <Plus className="mr-2 h-4 w-4" />
                 Add Certificate
               </Button>
@@ -474,15 +462,6 @@ export function CertificateAuthorities() {
           )}
         </CardContent>
       </Card>
-
-      {/* Certificate Authority Form Dialog */}
-      <CertificateAuthorityForm
-        open={showForm}
-        onClose={handleFormClose}
-        onSuccess={handleFormSuccess}
-        certificateAuthority={selectedCA}
-        onDelete={handleDeleteRequest}
-      />
 
       {/* Delete Confirmation Dialog */}
       <ConfirmationDialog

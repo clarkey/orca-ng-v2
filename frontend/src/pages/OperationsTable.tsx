@@ -50,17 +50,38 @@ import {
   ChevronsRight,
   Ban,
   ChevronUp,
-  ChevronDown
+  ChevronDown,
+  CheckCircle2
 } from 'lucide-react';
 import { OperationDetailsPanel } from '../components/OperationDetailsPanel';
+import { ConfirmationDialog } from '../components/ui/confirmation-dialog';
+import { operationsApi } from '../api/operations';
 
 const STORAGE_KEY_PAGE_SIZE = 'orca-operations-page-size';
 
 export default function OperationsTable() {
   const [selectedOperation, setSelectedOperation] = useState<Operation | null>(null);
+  const [operationToCancel, setOperationToCancel] = useState<Operation | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
   
   // Table state
   const [sorting, setSorting] = useState<SortingState>([]);
+  
+  const handleConfirmCancel = async () => {
+    if (!operationToCancel) return;
+    
+    setIsCancelling(true);
+    try {
+      await operationsApi.cancel(operationToCancel.id);
+      refetch();
+    } catch (error) {
+      console.error('Failed to cancel operation:', error);
+      alert('Failed to cancel operation. Please try again.');
+    } finally {
+      setIsCancelling(false);
+      setOperationToCancel(null);
+    }
+  };
   
   // Initialize pagination with saved page size
   const [pagination, setPagination] = useState<PaginationState>(() => {
@@ -165,38 +186,78 @@ export default function OperationsTable() {
         id: 'status',
         accessorKey: 'status',
         header: () => <span></span>,
-        size: 20,
+        size: 60,
+        minSize: 60,
+        maxSize: 60,
         cell: ({ row }) => {
-          const statusIcons: Record<Status, { icon: React.ReactNode; color: string }> = {
-            pending: { 
-              icon: <Clock className="h-4 w-4" />, 
-              color: 'text-gray-400' 
-            },
-            processing: { 
-              icon: <Loader2 className="h-4 w-4 animate-spin" />, 
-              color: 'text-blue-600' 
-            },
-            completed: { 
-              icon: <CheckCircle className="h-4 w-4" />, 
-              color: 'text-green-600' 
-            },
-            failed: { 
-              icon: <XCircle className="h-4 w-4" />, 
-              color: 'text-red-600' 
-            },
-            cancelled: { 
-              icon: <Ban className="h-4 w-4" />, 
-              color: 'text-gray-400' 
-            },
-          };
+          const operation = row.original;
+          const scheduledTime = new Date(operation.scheduled_at);
+          const now = new Date();
+          const isScheduledForFuture = operation.status === 'pending' && scheduledTime > now;
           
-          const status = statusIcons[row.original.status];
+          // Match the exact styling from the timeline
+          if (operation.status === 'pending' && isScheduledForFuture) {
+            // Scheduled state (blue)
+            return (
+              <div className="flex justify-center" title="Scheduled">
+                <div className="flex items-center justify-center w-7 h-7 bg-white border-2 border-blue-400 rounded-full">
+                  <Clock className="h-3.5 w-3.5 text-blue-600" />
+                </div>
+              </div>
+            );
+          } else if (operation.status === 'pending') {
+            // Pending/Created state (gray)
+            return (
+              <div className="flex justify-center" title="Pending">
+                <div className="flex items-center justify-center w-7 h-7 bg-white border-2 border-gray-300 rounded-full">
+                  <Clock className="h-3.5 w-3.5 text-gray-600" />
+                </div>
+              </div>
+            );
+          } else if (operation.status === 'processing') {
+            // Processing/Started state (indigo)
+            return (
+              <div className="flex justify-center" title="Processing">
+                <div className="flex items-center justify-center w-7 h-7 bg-white border-2 border-indigo-400 rounded-full">
+                  <Loader2 className="h-3.5 w-3.5 text-indigo-600 animate-spin" />
+                </div>
+              </div>
+            );
+          } else if (operation.status === 'completed') {
+            // Completed state (green)
+            return (
+              <div className="flex justify-center" title="Completed">
+                <div className="flex items-center justify-center w-7 h-7 bg-white border-2 border-green-400 rounded-full">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                </div>
+              </div>
+            );
+          } else if (operation.status === 'failed') {
+            // Failed state (red)
+            return (
+              <div className="flex justify-center" title="Failed">
+                <div className="flex items-center justify-center w-7 h-7 bg-white border-2 border-red-400 rounded-full">
+                  <XCircle className="h-3.5 w-3.5 text-red-600" />
+                </div>
+              </div>
+            );
+          } else if (operation.status === 'cancelled') {
+            // Cancelled state (amber)
+            return (
+              <div className="flex justify-center" title="Cancelled">
+                <div className="flex items-center justify-center w-7 h-7 bg-white border-2 border-amber-400 rounded-full">
+                  <Ban className="h-3.5 w-3.5 text-amber-600" />
+                </div>
+              </div>
+            );
+          }
           
+          // Fallback
           return (
-            <div className="flex justify-center pt-1" title={row.original.status}>
-              <span className={status.color}>
-                {status.icon}
-              </span>
+            <div className="flex justify-center" title={operation.status}>
+              <div className="flex items-center justify-center w-7 h-7 bg-white border-2 border-gray-300 rounded-full">
+                <Clock className="h-3.5 w-3.5 text-gray-600" />
+              </div>
             </div>
           );
         },
@@ -377,21 +438,9 @@ export default function OperationsTable() {
       {
         id: 'actions',
         header: '',
-        size: 100,
+        size: 40,
         cell: ({ row }) => (
-          <div className="flex justify-end gap-2 pt-1">
-            {(row.original.status === 'pending' || row.original.status === 'processing') && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleCancelOperation(row.original.id);
-                }}
-              >
-                Cancel
-              </Button>
-            )}
+          <div className="flex justify-end pt-1">
             <ChevronRight className="h-4 w-4 text-gray-400" />
           </div>
         ),
@@ -476,7 +525,8 @@ export default function OperationsTable() {
                     {headerGroup.headers.map((header) => (
                       <TableHead 
                         key={header.id} 
-                        style={{ width: header.getSize() }}
+                        style={{ width: header.getSize(), minWidth: header.getSize(), maxWidth: header.getSize() }}
+                        className={header.id === 'status' ? 'w-[60px] min-w-[60px] max-w-[60px]' : ''}
                       >
                         {header.isPlaceholder
                           ? null
@@ -497,7 +547,7 @@ export default function OperationsTable() {
                       {row.getVisibleCells().map((cell) => (
                         <TableCell 
                           key={cell.id}
-                          className="align-top"
+                          className={`align-top ${cell.column.id === 'status' ? 'p-2' : ''}`}
                         >
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
                         </TableCell>
@@ -603,6 +653,24 @@ export default function OperationsTable() {
         operation={selectedOperation} 
         onClose={() => setSelectedOperation(null)}
         onUpdate={refetch}
+        onCancelRequest={(operation) => {
+          setSelectedOperation(null);
+          setOperationToCancel(operation);
+        }}
+      />
+
+      <ConfirmationDialog
+        open={!!operationToCancel}
+        onOpenChange={(open) => !open && setOperationToCancel(null)}
+        title="Cancel Operation"
+        description={operationToCancel ? 
+          `Are you sure you want to cancel this ${getOperationTypeLabel(operationToCancel.type).toLowerCase()}? This action cannot be undone.` : 
+          ''
+        }
+        confirmLabel={isCancelling ? "Cancelling..." : "Cancel Operation"}
+        variant="destructive"
+        onConfirm={handleConfirmCancel}
+        confirmDisabled={isCancelling}
       />
     </PageContainer>
   );

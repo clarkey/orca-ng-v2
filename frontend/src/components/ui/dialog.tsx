@@ -46,33 +46,33 @@ const DialogContent = React.forwardRef<
 ))
 DialogContent.displayName = DialogPrimitive.Content.displayName
 
-const DialogHeader = ({
-  className,
-  ...props
-}: React.HTMLAttributes<HTMLDivElement>) => (
-  <div
-    className={cn(
-      "flex flex-col space-y-1.5 text-center sm:text-left",
-      className
-    )}
-    {...props}
-  />
-)
-DialogHeader.displayName = "DialogHeader"
-
 const DialogFooter = ({
   className,
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2",
+      "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2 px-6 py-4 border-t flex-shrink-0",
       className
     )}
     {...props}
   />
 )
 DialogFooter.displayName = "DialogFooter"
+
+const DialogBody = ({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement>) => (
+  <div
+    className={cn(
+      "flex-1 overflow-y-auto px-6 py-4 min-h-0",
+      className
+    )}
+    {...props}
+  />
+)
+DialogBody.displayName = "DialogBody"
 
 const DialogTitle = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Title>,
@@ -101,6 +101,37 @@ const DialogDescription = React.forwardRef<
 ))
 DialogDescription.displayName = DialogPrimitive.Description.displayName
 
+interface DialogHeaderProps {
+  title: string;
+  description?: string;
+  className?: string;
+  children?: React.ReactNode;
+}
+
+const DialogHeader = ({ 
+  title, 
+  description, 
+  className,
+  children 
+}: DialogHeaderProps) => {
+  return (
+    <div className={cn("bg-gray-50 border-b border-gray-200 px-6 py-5 flex-shrink-0", className)}>
+      <div className="flex flex-col space-y-1 text-center sm:text-left">
+        <DialogTitle className="text-lg font-semibold text-gray-900">
+          {title}
+        </DialogTitle>
+        {description && (
+          <DialogDescription className="text-sm text-gray-600">
+            {description}
+          </DialogDescription>
+        )}
+      </div>
+      {children}
+    </div>
+  );
+}
+DialogHeader.displayName = "DialogHeader"
+
 export {
   Dialog,
   DialogPortal,
@@ -109,6 +140,7 @@ export {
   DialogTrigger,
   DialogContent,
   DialogHeader,
+  DialogBody,
   DialogFooter,
   DialogTitle,
   DialogDescription,

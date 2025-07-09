@@ -4,14 +4,13 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-import { Dialog } from './ui/dialog';
-import {
-  ScrollableDialogContent,
-  ScrollableDialogHeader,
-  ScrollableDialogBody,
-  ScrollableDialogFooter,
-} from './ui/scrollable-dialog';
-import { DialogTitle, DialogDescription } from './ui/dialog';
+import { 
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogBody,
+  DialogFooter,
+} from './ui/dialog';
 import { FormCheckbox } from './ui/form-fields';
 import {
   Form,
@@ -237,17 +236,16 @@ export function CyberArkInstanceForm({ open, onClose, onSuccess, instance, onDel
 
   return (
     <Dialog open={open} onOpenChange={() => !createMutation.isPending && !updateMutation.isPending && onClose()}>
-      <ScrollableDialogContent className="max-w-2xl">
-        <ScrollableDialogHeader>
-          <DialogTitle>{instance ? 'Edit CyberArk Instance' : 'Add CyberArk Instance'}</DialogTitle>
-          <DialogDescription>
-            Configure a CyberArk PVWA instance connection. The connection will be tested before saving.
-          </DialogDescription>
-        </ScrollableDialogHeader>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader
+          title={instance ? 'Edit CyberArk Instance' : 'Add CyberArk Instance'}
+          description="Configure a CyberArk PVWA instance connection. The connection will be tested before saving."
+        />
 
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} autoComplete="off">
-            <ScrollableDialogBody className="space-y-6">
+        <DialogBody>
+          <Form {...form}>
+            <form id="cyberark-instance-form" onSubmit={form.handleSubmit(onSubmit)} autoComplete="off">
+              <div className="space-y-6">
               {form.formState.errors.root && (
                 <Alert variant="destructive">
                   <XCircle className="h-4 w-4" />
@@ -383,10 +381,12 @@ export function CyberArkInstanceForm({ open, onClose, onSuccess, instance, onDel
                 </div>
               </div>
             )}
-
-            </ScrollableDialogBody>
-            
-            <ScrollableDialogFooter className="gap-2">
+              </div>
+            </form>
+          </Form>
+        </DialogBody>
+        
+        <DialogFooter className="gap-2">
                 {instance && onDelete && (
                   <Button
                     type="button"
@@ -429,7 +429,8 @@ export function CyberArkInstanceForm({ open, onClose, onSuccess, instance, onDel
                 </Button>
                 
                 <Button 
-                  type="submit" 
+                  type="submit"
+                  form="cyberark-instance-form"
                   disabled={createMutation.isPending || updateMutation.isPending || isTesting || (!instance && !hasTestedSuccessfully)}
                 >
                   {createMutation.isPending || updateMutation.isPending ? (
@@ -441,10 +442,8 @@ export function CyberArkInstanceForm({ open, onClose, onSuccess, instance, onDel
                     instance ? 'Update Instance' : 'Create Instance'
                   )}
                 </Button>
-            </ScrollableDialogFooter>
-          </form>
-        </Form>
-      </ScrollableDialogContent>
+        </DialogFooter>
+      </DialogContent>
     </Dialog>
   );
 }

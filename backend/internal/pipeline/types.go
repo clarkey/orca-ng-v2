@@ -150,3 +150,39 @@ type CyberArkInstanceInfo struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 }
+
+// ListOperationsFilters represents filters for listing operations
+type ListOperationsFilters struct {
+	Status        *Status        `json:"status,omitempty"`
+	Type          *OperationType `json:"type,omitempty"`
+	Priority      *Priority      `json:"priority,omitempty"`
+	CreatedBy     *string        `json:"created_by,omitempty"`
+	InstanceID    *string        `json:"instance_id,omitempty"`
+	CorrelationID *string        `json:"correlation_id,omitempty"`
+	StartDate     *time.Time     `json:"start_date,omitempty"`
+	EndDate       *time.Time     `json:"end_date,omitempty"`
+	CreatedAfter  *time.Time     `json:"created_after,omitempty"`
+	CreatedBefore *time.Time     `json:"created_before,omitempty"`
+	Search        string         `json:"search,omitempty"`
+	SortBy        string         `json:"sort_by,omitempty"`
+	SortOrder     string         `json:"sort_order,omitempty"`
+	Limit         int            `json:"limit,omitempty"`
+	Offset        int            `json:"offset,omitempty"`
+}
+
+// OperationStats represents operation statistics
+type OperationStats struct {
+	ByStatus    map[Status]int               `json:"by_status"`
+	ByType      map[OperationType]int        `json:"by_type"`
+	ByPriority  map[Priority]int             `json:"by_priority"`
+	ByHour      []HourlyStats                `json:"by_hour"`
+	TotalCount  int                          `json:"total_count"`
+	AvgWaitTime float64                      `json:"avg_wait_time_seconds"`
+	AvgProcTime float64                      `json:"avg_process_time_seconds"`
+}
+
+// HourlyStats represents hourly operation statistics
+type HourlyStats struct {
+	Hour  string `json:"hour"`
+	Count int    `json:"count"`
+}

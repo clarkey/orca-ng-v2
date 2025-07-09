@@ -22,6 +22,8 @@ import SettingsNotifications from '@/pages/SettingsNotifications';
 import SettingsDatabase from '@/pages/SettingsDatabase';
 import SettingsAPI from '@/pages/SettingsAPI';
 import { CertificateAuthorities } from '@/pages/CertificateAuthorities';
+import { CertificateAuthorityAdd } from '@/pages/CertificateAuthorityAdd';
+import { CertificateAuthorityEdit } from '@/pages/CertificateAuthorityEdit';
 
 // Create a client
 const queryClient = new QueryClient({
@@ -79,6 +81,8 @@ function App() {
                   <Route path="/settings/database" element={<SettingsDatabase />} />
                   <Route path="/settings/api" element={<SettingsAPI />} />
                   <Route path="/settings/certificates" element={<CertificateAuthorities />} />
+                  <Route path="/settings/certificates/add" element={<CertificateAuthorityAdd />} />
+                  <Route path="/settings/certificates/:id/edit" element={<CertificateAuthorityEdit />} />
                 </Route>
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
