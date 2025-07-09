@@ -41,7 +41,15 @@ const createSchema = z.object({
       // Basic PEM format validation
       return cert.includes('-----BEGIN CERTIFICATE-----') && 
              cert.includes('-----END CERTIFICATE-----');
-    }, 'Invalid certificate format. Must be in PEM format'),
+    }, 'Invalid certificate format. Must be in PEM format')
+    .transform((cert) => {
+      // Count certificates in the input
+      const certCount = (cert.match(/-----BEGIN CERTIFICATE-----/g) || []).length;
+      if (certCount > 1) {
+        console.log(`Detected certificate chain with ${certCount} certificates`);
+      }
+      return cert;
+    }),
   is_active: z.boolean().default(true),
 });
 
@@ -76,6 +84,7 @@ export function CertificateAuthorityForm({
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
+  const [detectedCertCount, setDetectedCertCount] = useState<number>(0);
   
   const isEditMode = !!certificateAuthority;
 
@@ -142,15 +151,27 @@ export function CertificateAuthorityForm({
           certificate: '',
           is_active: true,
         });
+        setDetectedCertCount(0);
       }
+    } else {
+      // Reset count when dialog closes
+      setDetectedCertCount(0);
     }
   }, [open, isEditMode, certificateAuthority, form]);
+
+  const detectCertificateCount = (content: string) => {
+    const certCount = (content.match(/-----BEGIN CERTIFICATE-----/g) || []).length;
+    setDetectedCertCount(certCount);
+    return certCount;
+  };
 
   const handleFileUpload = (file: File) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       const content = e.target?.result as string;
-      form.setValue('certificate' as any, content.trim());
+      const trimmedContent = content.trim();
+      detectCertificateCount(trimmedContent);
+      form.setValue('certificate' as any, trimmedContent);
       form.trigger('certificate' as any);
     };
     reader.readAsText(file);
@@ -274,6 +295,9 @@ export function CertificateAuthorityForm({
                             <p className="text-sm text-gray-600 mb-2">
                               Drag and drop a certificate file here, or click to select
                             </p>
+                            <p className="text-xs text-gray-500">
+                              Supports single certificates or certificate chains
+                            </p>
                             <input
                               ref={fileInputRef}
                               type="file"
@@ -290,22 +314,51 @@ export function CertificateAuthorityForm({
                               variant="outline"
                               size="sm"
                               onClick={() => fileInputRef.current?.click()}
+                              className="mt-2"
                             >
                               <FileText className="mr-2 h-4 w-4" />
                               Select File
                             </Button>
                           </div>
                           
-                          <Textarea
-                            placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----"
-                            className="font-mono text-xs min-h-[200px]"
-                            {...field}
-                          />
+                          <div className="relative">
+                            <Textarea
+                              placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----"
+                              className="font-mono text-xs min-h-[200px]"
+                              {...field}
+                              onChange={(e) => {
+                                field.onChange(e);
+                                detectCertificateCount(e.target.value);
+                              }}
+                            />
+                            {detectedCertCount > 0 && (
+                              <div className="absolute top-2 right-2 pointer-events-none">
+                                <Badge variant={detectedCertCount > 1 ? "default" : "secondary"} className="text-xs">
+                                  {detectedCertCount} certificate{detectedCertCount !== 1 ? 's' : ''} detected
+                                </Badge>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </FormControl>
-                      <FormDescription>
-                        Upload or paste a CA certificate in PEM format. Only CA certificates with certificate signing permissions are accepted.
-                      </FormDescription>
+                      <div className="space-y-2">
+                        <FormDescription>
+                          Upload or paste CA certificates in PEM format. Certificate chains are supported.
+                        </FormDescription>
+                        <Alert className="mt-2">
+                          <AlertCircle className="h-4 w-4" />
+                          <AlertTitle className="text-sm">Certificate Chain Order</AlertTitle>
+                          <AlertDescription className="text-xs">
+                            When uploading a certificate chain, order matters:
+                            <ol className="list-decimal list-inside mt-2 space-y-1">
+                              <li>Primary certificate first (the one that signs service certificates)</li>
+                              <li>Intermediate CA certificates (if any)</li>
+                              <li>Root CA certificate last</li>
+                            </ol>
+                            <p className="mt-2">Example: [Intermediate CA] → [Root CA]</p>
+                          </AlertDescription>
+                        </Alert>
+                      </div>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -315,7 +368,23 @@ export function CertificateAuthorityForm({
               {/* Certificate Info Display for Edit Mode */}
               {isEditMode && fullCertificate && (
                 <div className="rounded-lg border bg-gray-50 p-4 space-y-3">
-                  <h4 className="text-sm font-medium text-gray-900">Certificate Information</h4>
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-medium text-gray-900">Certificate Information</h4>
+                    <div className="flex items-center gap-2">
+                      {fullCertificate.certificate_count > 1 && (
+                        <Badge variant="outline" className="text-xs">
+                          Chain ({fullCertificate.certificate_count} certificates)
+                        </Badge>
+                      )}
+                      {fullCertificate.is_root_ca && (
+                        <Badge variant="secondary" className="text-xs">Root CA</Badge>
+                      )}
+                      {fullCertificate.is_intermediate && (
+                        <Badge variant="secondary" className="text-xs">Intermediate CA</Badge>
+                      )}
+                    </div>
+                  </div>
+                  
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
                       <span className="text-gray-500">Subject:</span>
@@ -338,6 +407,45 @@ export function CertificateAuthorityForm({
                       <p className="font-mono text-xs mt-1 break-all">{fullCertificate.fingerprint}</p>
                     </div>
                   </div>
+
+                  {/* Show certificate chain details if available */}
+                  {fullCertificate.chain_info && (() => {
+                    try {
+                      const chainInfo = typeof fullCertificate.chain_info === 'string' 
+                        ? JSON.parse(fullCertificate.chain_info) 
+                        : fullCertificate.chain_info;
+                      
+                      if (Array.isArray(chainInfo) && chainInfo.length > 1) {
+                        return (
+                          <div className="pt-3 border-t">
+                            <h5 className="text-xs font-medium text-gray-700 mb-2">Certificate Chain</h5>
+                            <div className="space-y-2">
+                              {chainInfo.map((cert: any, index: number) => (
+                                <div key={index} className="text-xs p-2 bg-white rounded border">
+                                  <div className="flex items-center justify-between mb-1">
+                                    <span className="font-medium">
+                                      {index === 0 ? 'Primary Certificate' : 
+                                       cert.is_self_signed ? 'Root CA' : 'Intermediate CA'}
+                                    </span>
+                                    {cert.is_self_signed && (
+                                      <Badge variant="outline" className="text-xs">Self-signed</Badge>
+                                    )}
+                                  </div>
+                                  <div className="font-mono text-gray-600 truncate" title={cert.subject}>
+                                    {cert.subject}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    } catch (e) {
+                      return null;
+                    }
+                  })()}
+
                   {certificateAuthority && (
                     <div className="pt-2">
                       {certificateAuthority.is_expired ? (

@@ -1,13 +1,27 @@
 import { apiClient } from '@/api/client';
 
+export interface CertificateChainInfo {
+  subject: string;
+  issuer: string;
+  fingerprint: string;
+  not_before: string;
+  not_after: string;
+  is_ca: boolean;
+  is_self_signed: boolean;
+}
+
 export interface CertificateAuthority {
   id: string;
   name: string;
   description?: string;
   certificate: string;
+  certificate_count: number;
   fingerprint: string;
   subject: string;
   issuer: string;
+  is_root_ca: boolean;
+  is_intermediate: boolean;
+  chain_info?: string; // JSON string of CertificateChainInfo[]
   not_before: string;
   not_after: string;
   is_active: boolean;
@@ -21,9 +35,13 @@ export interface CertificateAuthorityInfo {
   id: string;
   name: string;
   description?: string;
+  certificate_count: number;
   fingerprint: string;
   subject: string;
   issuer: string;
+  is_root_ca: boolean;
+  is_intermediate: boolean;
+  chain_info?: CertificateChainInfo[];
   not_before: string;
   not_after: string;
   is_active: boolean;

@@ -123,8 +123,15 @@ export function CertificateAuthorities() {
         size: 350,
         cell: ({ row }) => (
           <div className="text-sm">
-            <div className="truncate max-w-[350px]" title={row.original.subject}>
-              {row.original.subject}
+            <div className="flex items-center gap-2">
+              <div className="flex-1 truncate max-w-[280px]" title={row.original.subject}>
+                {row.original.subject}
+              </div>
+              {row.original.certificate_count > 1 && (
+                <Badge variant="outline" className="text-xs shrink-0">
+                  Chain ({row.original.certificate_count})
+                </Badge>
+              )}
             </div>
             <div className="text-xs text-gray-500 font-mono mt-1">
               SHA256: {row.original.fingerprint.substring(0, 16)}...
@@ -135,11 +142,22 @@ export function CertificateAuthorities() {
       {
         id: 'issuer',
         accessorKey: 'issuer',
-        header: 'Issuer',
+        header: 'Type / Issuer',
         size: 250,
         cell: ({ row }) => (
-          <div className="text-sm truncate max-w-[250px]" title={row.original.issuer}>
-            {row.original.issuer}
+          <div className="text-sm">
+            <div className="flex items-center gap-2 mb-1">
+              {row.original.is_root_ca ? (
+                <Badge variant="secondary" className="text-xs">Root CA</Badge>
+              ) : row.original.is_intermediate ? (
+                <Badge variant="secondary" className="text-xs">Intermediate</Badge>
+              ) : (
+                <Badge variant="outline" className="text-xs">CA</Badge>
+              )}
+            </div>
+            <div className="text-xs text-gray-500 truncate max-w-[250px]" title={row.original.issuer}>
+              {row.original.issuer}
+            </div>
           </div>
         ),
       },
@@ -288,7 +306,7 @@ export function CertificateAuthorities() {
     <PageContainer>
       <PageHeader
         title="Certificate Authorities"
-        description="Manage trusted certificate authorities for secure connections"
+        description="Manage trusted certificate authorities for secure connections. Supports single certificates and certificate chains."
         actions={
           <Button onClick={() => setShowForm(true)}>
             <Plus className="mr-2 h-4 w-4" />
