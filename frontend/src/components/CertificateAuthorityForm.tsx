@@ -6,12 +6,14 @@ import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Textarea } from './ui/textarea';
+import { Dialog } from './ui/dialog';
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-} from './ui/dialog';
-import { DialogHeaderStyled } from './ui/dialog-header-styled';
+  ScrollableDialogContent,
+  ScrollableDialogHeader,
+  ScrollableDialogBody,
+  ScrollableDialogFooter,
+} from './ui/scrollable-dialog';
+import { DialogTitle, DialogDescription } from './ui/dialog';
 import { FormCheckbox } from './ui/form-fields';
 import {
   Form,
@@ -218,18 +220,20 @@ export function CertificateAuthorityForm({
 
   return (
     <Dialog open={open} onOpenChange={() => !isPending && onClose()}>
-      <DialogContent className="max-w-2xl p-0 overflow-hidden max-h-[90vh]">
-        <DialogHeaderStyled 
-          title={isEditMode ? 'Edit Certificate Authority' : 'Add Certificate Authority'}
-          description={isEditMode 
-            ? 'Update the certificate authority details'
-            : 'Add a trusted certificate authority to verify secure connections'
-          }
-        />
+      <ScrollableDialogContent className="max-w-2xl">
+        <ScrollableDialogHeader>
+          <DialogTitle>{isEditMode ? 'Edit Certificate Authority' : 'Add Certificate Authority'}</DialogTitle>
+          <DialogDescription>
+            {isEditMode 
+              ? 'Update the certificate authority details'
+              : 'Add a trusted certificate authority to verify secure connections'
+            }
+          </DialogDescription>
+        </ScrollableDialogHeader>
 
-        <div className="px-6 pb-6 pt-2 overflow-y-auto">
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)}>
+            <ScrollableDialogBody className="space-y-6">
               {form.formState.errors.root && (
                 <Alert variant="destructive">
                   <AlertCircle className="h-4 w-4" />
@@ -480,53 +484,53 @@ export function CertificateAuthorityForm({
                 label="Active"
                 description="Enable this certificate authority for validating connections"
               />
+            </ScrollableDialogBody>
 
-              <DialogFooter className="gap-2 pt-6 mt-6 border-t">
-                {isEditMode && onDelete && (
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    onClick={() => {
-                      if (certificateAuthority) {
-                        onClose(); // Close the form modal first
-                        onDelete(certificateAuthority); // Then trigger the delete confirmation
-                      }
-                    }}
-                    disabled={isPending}
-                  >
-                    Delete
-                  </Button>
-                )}
-                
-                <div className="flex-1" />
-                
+            <ScrollableDialogFooter className="gap-2">
+              {isEditMode && onDelete && (
                 <Button
                   type="button"
-                  variant="outline"
-                  onClick={onClose}
+                  variant="destructive"
+                  onClick={() => {
+                    if (certificateAuthority) {
+                      onClose(); // Close the form modal first
+                      onDelete(certificateAuthority); // Then trigger the delete confirmation
+                    }
+                  }}
                   disabled={isPending}
                 >
-                  Cancel
+                  Delete
                 </Button>
-                
-                <Button 
-                  type="submit" 
-                  disabled={isPending}
-                >
-                  {isPending ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    isEditMode ? 'Update Certificate' : 'Add Certificate'
-                  )}
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
-        </div>
-      </DialogContent>
+              )}
+              
+              <div className="flex-1" />
+              
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onClose}
+                disabled={isPending}
+              >
+                Cancel
+              </Button>
+              
+              <Button 
+                type="submit" 
+                disabled={isPending}
+              >
+                {isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  isEditMode ? 'Update Certificate' : 'Add Certificate'
+                )}
+              </Button>
+            </ScrollableDialogFooter>
+          </form>
+        </Form>
+      </ScrollableDialogContent>
     </Dialog>
   );
 }

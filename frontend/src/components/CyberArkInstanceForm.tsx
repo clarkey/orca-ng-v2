@@ -4,12 +4,14 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
+import { Dialog } from './ui/dialog';
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-} from './ui/dialog';
-import { DialogHeaderStyled } from './ui/dialog-header-styled';
+  ScrollableDialogContent,
+  ScrollableDialogHeader,
+  ScrollableDialogBody,
+  ScrollableDialogFooter,
+} from './ui/scrollable-dialog';
+import { DialogTitle, DialogDescription } from './ui/dialog';
 import { FormCheckbox } from './ui/form-fields';
 import {
   Form,
@@ -235,15 +237,17 @@ export function CyberArkInstanceForm({ open, onClose, onSuccess, instance, onDel
 
   return (
     <Dialog open={open} onOpenChange={() => !createMutation.isPending && !updateMutation.isPending && onClose()}>
-      <DialogContent className="max-w-2xl p-0 overflow-hidden">
-        <DialogHeaderStyled 
-          title={instance ? 'Edit CyberArk Instance' : 'Add CyberArk Instance'}
-          description="Configure a CyberArk PVWA instance connection. The connection will be tested before saving."
-        />
+      <ScrollableDialogContent className="max-w-2xl">
+        <ScrollableDialogHeader>
+          <DialogTitle>{instance ? 'Edit CyberArk Instance' : 'Add CyberArk Instance'}</DialogTitle>
+          <DialogDescription>
+            Configure a CyberArk PVWA instance connection. The connection will be tested before saving.
+          </DialogDescription>
+        </ScrollableDialogHeader>
 
-        <div className="px-6 pb-6 pt-2">
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6" autoComplete="off">
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} autoComplete="off">
+            <ScrollableDialogBody className="space-y-6">
               {form.formState.errors.root && (
                 <Alert variant="destructive">
                   <XCircle className="h-4 w-4" />
@@ -380,7 +384,9 @@ export function CyberArkInstanceForm({ open, onClose, onSuccess, instance, onDel
               </div>
             )}
 
-              <DialogFooter className="gap-2 pt-6 mt-6 border-t">
+            </ScrollableDialogBody>
+            
+            <ScrollableDialogFooter className="gap-2">
                 {instance && onDelete && (
                   <Button
                     type="button"
@@ -435,11 +441,10 @@ export function CyberArkInstanceForm({ open, onClose, onSuccess, instance, onDel
                     instance ? 'Update Instance' : 'Create Instance'
                   )}
                 </Button>
-              </DialogFooter>
-            </form>
-          </Form>
-        </div>
-      </DialogContent>
+            </ScrollableDialogFooter>
+          </form>
+        </Form>
+      </ScrollableDialogContent>
     </Dialog>
   );
 }
