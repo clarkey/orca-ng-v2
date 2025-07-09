@@ -70,16 +70,24 @@ curl -X POST https://orca.example.com/api/certificate-authorities \
 ## Certificate Chain Order
 
 When uploading a certificate chain, the order matters:
-1. **Primary Certificate First**: The certificate that directly signs your service certificates should be first
-2. **Chain Order**: Follow with intermediate CAs in order, ending with the root CA
-3. **Complete Chain**: Include all certificates up to a self-signed root for best compatibility
+1. **Start with the CA that signs your service certificates**: This is typically an intermediate CA
+2. **Follow the chain upward**: Include each CA that signed the previous one
+3. **End with the root CA**: The self-signed certificate should be last
 
-Example chain order:
+Example chain order for a typical setup:
+```
+[Intermediate CA] - The CA that directly signs your CyberArk service certificate
+[Root CA]         - The self-signed CA that signed the intermediate (last)
+```
+
+For a more complex chain:
 ```
 [Intermediate CA 2] - Signs service certificates
 [Intermediate CA 1] - Signs Intermediate CA 2
-[Root CA]          - Signs Intermediate CA 1 (self-signed)
+[Root CA]          - Signs Intermediate CA 1 (self-signed, last)
 ```
+
+**Note**: You're uploading the CA certificates, not the service certificate itself. The service certificate remains on the CyberArk server.
 
 ## API Response Fields
 

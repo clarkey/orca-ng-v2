@@ -349,13 +349,19 @@ export function CertificateAuthorityForm({
                           <AlertCircle className="h-4 w-4" />
                           <AlertTitle className="text-sm">Certificate Chain Order</AlertTitle>
                           <AlertDescription className="text-xs">
-                            When uploading a certificate chain, order matters:
+                            When uploading a certificate chain, include certificates in this order:
                             <ol className="list-decimal list-inside mt-2 space-y-1">
-                              <li>Primary certificate first (the one that signs service certificates)</li>
-                              <li>Intermediate CA certificates (if any)</li>
-                              <li>Root CA certificate last</li>
+                              <li>Intermediate CA certificate (the one that signed your service certificates)</li>
+                              <li>Higher-level intermediate CAs (if any)</li>
+                              <li>Root CA certificate (self-signed) last</li>
                             </ol>
-                            <p className="mt-2">Example: [Intermediate CA] → [Root CA]</p>
+                            <div className="mt-2 p-2 bg-gray-50 rounded text-xs">
+                              <div className="font-medium mb-1">Example for a service cert signed by an intermediate:</div>
+                              <div className="font-mono text-gray-600">
+                                [Intermediate CA] ← signs service certs<br/>
+                                [Root CA] ← signs intermediate
+                              </div>
+                            </div>
                           </AlertDescription>
                         </Alert>
                       </div>
