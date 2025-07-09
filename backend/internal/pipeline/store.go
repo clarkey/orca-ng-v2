@@ -2,31 +2,34 @@ package pipeline
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"time"
 
+	"gorm.io/gorm"
+	
+	"github.com/orca-ng/orca/internal/database"
+	gormmodels "github.com/orca-ng/orca/internal/models/gorm"
 	"github.com/orca-ng/orca/pkg/ulid"
 )
 
-// Store handles database operations for the pipeline
+// Store handles database operations for the pipeline using GORM
 type Store struct {
-	db *sql.DB
+	db *database.GormDB
 }
 
-// NewStore creates a new pipeline store
-func NewStore(db *sql.DB) *Store {
+// NewStore creates a new pipeline store using GORM
+func NewStore(db *database.GormDB) *Store {
 	return &Store{db: db}
 }
 
 // CreateOperation creates a new operation in the database
 func (s *Store) CreateOperation(ctx context.Context, req *CreateOperationRequest, createdBy *string) (*Operation, error) {
-	op := &Operation{
+	gormOp := &gormmodels.Operation{
 		ID:         ulid.New(ulid.OperationPrefix),
-		Type:       req.Type,
-		Priority:   req.Priority,
-		Status:     StatusPending,
+		Type:       string(req.Type),
+		Priority:   string(req.Priority),
+		Status:     gormmodels.OpStatusPending,
 		Payload:    req.Payload,
 		RetryCount: 0,
 		MaxRetries: 3, // Default, can be overridden
@@ -35,155 +38,99 @@ func (s *Store) CreateOperation(ctx context.Context, req *CreateOperationRequest
 	
 	// Set scheduled time
 	if req.ScheduledAt != nil {
-		op.ScheduledAt = *req.ScheduledAt
+		gormOp.ScheduledAt = *req.ScheduledAt
 	} else {
-		op.ScheduledAt = time.Now()
+		gormOp.ScheduledAt = time.Now()
 	}
 	
 	// Set correlation ID if provided
-	op.CorrelationID = req.CorrelationID
+	gormOp.CorrelationID = req.CorrelationID
 	
 	// Default priority to normal if not specified
-	if op.Priority == "" {
-		op.Priority = PriorityNormal
+	if gormOp.Priority == "" {
+		gormOp.Priority = gormmodels.OpPriorityNormal
+	}
+	
+	// Create with user context if available
+	createCtx := ctx
+	if createdBy != nil {
+		createCtx = context.WithValue(ctx, "user_id", *createdBy)
 	}
 	
 	// Insert into database
-	query := `
-		INSERT INTO operations (
-			id, type, priority, status, payload, retry_count, max_retries,
-			scheduled_at, created_by, correlation_id, created_at, updated_at
-		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
-		) RETURNING created_at, updated_at`
-	
-	err := s.db.QueryRowContext(
-		ctx, query,
-		op.ID, op.Type, op.Priority, op.Status, op.Payload,
-		op.RetryCount, op.MaxRetries, op.ScheduledAt,
-		op.CreatedBy, op.CorrelationID, time.Now(), time.Now(),
-	).Scan(&op.CreatedAt, &op.UpdatedAt)
-	
-	if err != nil {
+	if err := s.db.WithContext(createCtx).Create(gormOp).Error; err != nil {
 		return nil, fmt.Errorf("create operation: %w", err)
 	}
 	
-	return op, nil
+	// Convert to pipeline Operation
+	return s.convertToOperation(gormOp), nil
 }
 
 // GetOperation retrieves an operation by ID
 func (s *Store) GetOperation(ctx context.Context, id string) (*Operation, error) {
-	var op Operation
+	var gormOp gormmodels.Operation
 	
-	query := `
-		SELECT id, type, priority, status, payload, result, error_message,
-		       retry_count, max_retries, scheduled_at, started_at, completed_at,
-		       created_by, cyberark_instance_id, correlation_id, created_at, updated_at
-		FROM operations
-		WHERE id = $1`
-	
-	err := s.db.QueryRowContext(ctx, query, id).Scan(
-		&op.ID, &op.Type, &op.Priority, &op.Status, &op.Payload, &op.Result,
-		&op.ErrorMessage, &op.RetryCount, &op.MaxRetries, &op.ScheduledAt,
-		&op.StartedAt, &op.CompletedAt, &op.CreatedBy, &op.CyberArkInstanceID,
-		&op.CorrelationID, &op.CreatedAt, &op.UpdatedAt,
-	)
-	
-	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("operation not found")
-	}
-	if err != nil {
-		return nil, fmt.Errorf("get operation: %w", err)
+	result := s.db.WithContext(ctx).First(&gormOp, "id = ?", id)
+	if result.Error != nil {
+		if result.Error == gorm.ErrRecordNotFound {
+			return nil, fmt.Errorf("operation not found")
+		}
+		return nil, fmt.Errorf("get operation: %w", result.Error)
 	}
 	
-	return &op, nil
+	return s.convertToOperation(&gormOp), nil
 }
 
 // ListOperations retrieves operations with filtering
 func (s *Store) ListOperations(ctx context.Context, filters ListOperationsFilters) ([]*Operation, error) {
-	query := `
-		SELECT id, type, priority, status, payload, result, error_message,
-		       retry_count, max_retries, scheduled_at, started_at, completed_at,
-		       created_by, cyberark_instance_id, correlation_id, created_at, updated_at
-		FROM operations
-		WHERE 1=1`
+	query := s.db.WithContext(ctx).Model(&gormmodels.Operation{})
 	
-	args := []interface{}{}
-	argCount := 0
-	
-	// Build dynamic query based on filters
+	// Apply filters
 	if filters.Status != nil {
-		argCount++
-		query += fmt.Sprintf(" AND status = $%d", argCount)
-		args = append(args, *filters.Status)
+		query = query.Where("status = ?", string(*filters.Status))
 	}
 	
 	if filters.Type != nil {
-		argCount++
-		query += fmt.Sprintf(" AND type = $%d", argCount)
-		args = append(args, *filters.Type)
+		query = query.Where("type = ?", string(*filters.Type))
 	}
 	
 	if filters.Priority != nil {
-		argCount++
-		query += fmt.Sprintf(" AND priority = $%d", argCount)
-		args = append(args, *filters.Priority)
+		query = query.Where("priority = ?", string(*filters.Priority))
 	}
 	
 	if filters.CreatedBy != nil {
-		argCount++
-		query += fmt.Sprintf(" AND created_by = $%d", argCount)
-		args = append(args, *filters.CreatedBy)
+		query = query.Where("created_by = ?", *filters.CreatedBy)
 	}
 	
 	if filters.CorrelationID != nil {
-		argCount++
-		query += fmt.Sprintf(" AND correlation_id = $%d", argCount)
-		args = append(args, *filters.CorrelationID)
+		query = query.Where("correlation_id = ?", *filters.CorrelationID)
 	}
 	
 	// Search filter - uses full-text search with fallback to fuzzy matching
 	if filters.Search != nil && *filters.Search != "" {
-		argCount++
-		searchArg := argCount
-		argCount++
-		fuzzyArg := argCount
-		
-		// Use full-text search with tsquery and fallback to fuzzy matching
-		query += fmt.Sprintf(` AND (
-			search_vector @@ plainto_tsquery('english', $%d) 
-			OR id ILIKE $%d 
-			OR type::text ILIKE $%d
-		)`, searchArg, fuzzyArg, fuzzyArg)
-		
-		fuzzyPattern := "%" + *filters.Search + "%"
-		args = append(args, *filters.Search, fuzzyPattern)
+		searchPattern := "%" + *filters.Search + "%"
+		query = query.Where(
+			"search_vector @@ plainto_tsquery('english', ?) OR id ILIKE ? OR type::text ILIKE ?",
+			*filters.Search, searchPattern, searchPattern,
+		)
 	}
 	
 	// Date range filters
 	if filters.StartDate != nil {
-		argCount++
-		query += fmt.Sprintf(" AND created_at >= $%d", argCount)
-		args = append(args, *filters.StartDate)
+		query = query.Where("created_at >= ?", *filters.StartDate)
 	}
 	
 	if filters.EndDate != nil {
-		argCount++
-		query += fmt.Sprintf(" AND created_at <= $%d", argCount)
-		args = append(args, *filters.EndDate)
+		query = query.Where("created_at <= ?", *filters.EndDate)
 	}
 	
 	// Legacy date filters
 	if filters.CreatedAfter != nil {
-		argCount++
-		query += fmt.Sprintf(" AND created_at >= $%d", argCount)
-		args = append(args, *filters.CreatedAfter)
+		query = query.Where("created_at >= ?", *filters.CreatedAfter)
 	}
 	
 	if filters.CreatedBefore != nil {
-		argCount++
-		query += fmt.Sprintf(" AND created_at <= $%d", argCount)
-		args = append(args, *filters.CreatedBefore)
+		query = query.Where("created_at <= ?", *filters.CreatedBefore)
 	}
 	
 	// Add ordering
@@ -202,47 +149,33 @@ func (s *Store) ListOperations(ctx context.Context, filters ListOperationsFilter
 			if *filters.SortOrder == "desc" {
 				order = "DESC"
 			}
-			query += fmt.Sprintf(" ORDER BY %s %s", *filters.SortBy, order)
+			query = query.Order(fmt.Sprintf("%s %s", *filters.SortBy, order))
 		} else {
-			query += " ORDER BY created_at DESC"
+			query = query.Order("created_at DESC")
 		}
 	} else {
-		query += " ORDER BY created_at DESC"
+		query = query.Order("created_at DESC")
 	}
 	
 	// Add limit and offset for pagination
 	if filters.Limit > 0 {
-		argCount++
-		query += fmt.Sprintf(" LIMIT $%d", argCount)
-		args = append(args, filters.Limit)
+		query = query.Limit(filters.Limit)
 	}
 	
 	if filters.Offset > 0 {
-		argCount++
-		query += fmt.Sprintf(" OFFSET $%d", argCount)
-		args = append(args, filters.Offset)
+		query = query.Offset(filters.Offset)
 	}
 	
 	// Execute query
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
+	var gormOps []gormmodels.Operation
+	if err := query.Find(&gormOps).Error; err != nil {
 		return nil, fmt.Errorf("list operations: %w", err)
 	}
-	defer rows.Close()
 	
-	operations := []*Operation{}
-	for rows.Next() {
-		var op Operation
-		err := rows.Scan(
-			&op.ID, &op.Type, &op.Priority, &op.Status, &op.Payload, &op.Result,
-			&op.ErrorMessage, &op.RetryCount, &op.MaxRetries, &op.ScheduledAt,
-			&op.StartedAt, &op.CompletedAt, &op.CreatedBy, &op.CyberArkInstanceID,
-			&op.CorrelationID, &op.CreatedAt, &op.UpdatedAt,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("scan operation: %w", err)
-		}
-		operations = append(operations, &op)
+	// Convert to pipeline operations
+	operations := make([]*Operation, len(gormOps))
+	for i, gormOp := range gormOps {
+		operations[i] = s.convertToOperation(&gormOp)
 	}
 	
 	return operations, nil
@@ -250,97 +183,53 @@ func (s *Store) ListOperations(ctx context.Context, filters ListOperationsFilter
 
 // CountOperations counts operations matching the given filters
 func (s *Store) CountOperations(ctx context.Context, filters ListOperationsFilters) (int, error) {
-	query := `SELECT COUNT(*) FROM operations WHERE 1=1`
+	query := s.db.WithContext(ctx).Model(&gormmodels.Operation{})
 	
-	args := []interface{}{}
-	argCount := 0
-	
-	// Build dynamic query based on filters (same as ListOperations but without LIMIT/OFFSET)
+	// Apply same filters as ListOperations (without LIMIT/OFFSET)
 	if filters.Status != nil {
-		argCount++
-		query += fmt.Sprintf(" AND status = $%d", argCount)
-		args = append(args, *filters.Status)
+		query = query.Where("status = ?", string(*filters.Status))
 	}
 	
 	if filters.Type != nil {
-		argCount++
-		query += fmt.Sprintf(" AND type = $%d", argCount)
-		args = append(args, *filters.Type)
+		query = query.Where("type = ?", string(*filters.Type))
 	}
 	
 	if filters.Priority != nil {
-		argCount++
-		query += fmt.Sprintf(" AND priority = $%d", argCount)
-		args = append(args, *filters.Priority)
+		query = query.Where("priority = ?", string(*filters.Priority))
 	}
 	
 	if filters.CreatedBy != nil {
-		argCount++
-		query += fmt.Sprintf(" AND created_by = $%d", argCount)
-		args = append(args, *filters.CreatedBy)
+		query = query.Where("created_by = ?", *filters.CreatedBy)
 	}
 	
 	if filters.CorrelationID != nil {
-		argCount++
-		query += fmt.Sprintf(" AND correlation_id = $%d", argCount)
-		args = append(args, *filters.CorrelationID)
+		query = query.Where("correlation_id = ?", *filters.CorrelationID)
 	}
 	
 	// Search filter
 	if filters.Search != nil && *filters.Search != "" {
-		argCount++
-		searchArg := argCount
-		argCount++
-		fuzzyArg := argCount
-		
-		// Use full-text search with tsquery and fallback to fuzzy matching
-		query += fmt.Sprintf(` AND (
-			search_vector @@ plainto_tsquery('english', $%d) 
-			OR id ILIKE $%d 
-			OR type::text ILIKE $%d
-		)`, searchArg, fuzzyArg, fuzzyArg)
-		
-		fuzzyPattern := "%" + *filters.Search + "%"
-		args = append(args, *filters.Search, fuzzyPattern)
+		searchPattern := "%" + *filters.Search + "%"
+		query = query.Where(
+			"search_vector @@ plainto_tsquery('english', ?) OR id ILIKE ? OR type::text ILIKE ?",
+			*filters.Search, searchPattern, searchPattern,
+		)
 	}
 	
 	// Date range filters
 	if filters.StartDate != nil {
-		argCount++
-		query += fmt.Sprintf(" AND created_at >= $%d", argCount)
-		args = append(args, *filters.StartDate)
+		query = query.Where("created_at >= ?", *filters.StartDate)
 	}
 	
 	if filters.EndDate != nil {
-		argCount++
-		query += fmt.Sprintf(" AND created_at <= $%d", argCount)
-		args = append(args, *filters.EndDate)
+		query = query.Where("created_at <= ?", *filters.EndDate)
 	}
 	
-	var count int
-	err := s.db.QueryRowContext(ctx, query, args...).Scan(&count)
-	if err != nil {
+	var count int64
+	if err := query.Count(&count).Error; err != nil {
 		return 0, fmt.Errorf("count operations: %w", err)
 	}
 	
-	return count, nil
-}
-
-// OperationStats represents aggregated operation statistics
-type OperationStats struct {
-	ByStatus       map[Status]int        `json:"by_status"`
-	ByType         map[OperationType]int `json:"by_type"`
-	ByPriority     map[Priority]int      `json:"by_priority"`
-	ByHour         []HourlyStats         `json:"by_hour"`
-	TotalCount     int                   `json:"total_count"`
-	AvgWaitTime    float64               `json:"avg_wait_time_seconds"`
-	AvgProcessTime float64               `json:"avg_process_time_seconds"`
-}
-
-// HourlyStats represents operations count by hour
-type HourlyStats struct {
-	Hour  time.Time `json:"hour"`
-	Count int       `json:"count"`
+	return int(count), nil
 }
 
 // GetOperationStats returns aggregated statistics for operations
@@ -352,139 +241,120 @@ func (s *Store) GetOperationStats(ctx context.Context, startDate, endDate *time.
 		ByHour:     []HourlyStats{},
 	}
 	
-	// Base query conditions
-	whereClause := "1=1"
-	args := []interface{}{}
-	argCount := 0
+	// Base query
+	baseQuery := s.db.WithContext(ctx).Model(&gormmodels.Operation{})
 	
 	if startDate != nil {
-		argCount++
-		whereClause += fmt.Sprintf(" AND created_at >= $%d", argCount)
-		args = append(args, *startDate)
+		baseQuery = baseQuery.Where("created_at >= ?", *startDate)
 	}
 	
 	if endDate != nil {
-		argCount++
-		whereClause += fmt.Sprintf(" AND created_at <= $%d", argCount)
-		args = append(args, *endDate)
+		baseQuery = baseQuery.Where("created_at <= ?", *endDate)
 	}
 	
 	// Get counts by status
-	query := fmt.Sprintf(`
-		SELECT status, COUNT(*) as count
-		FROM operations
-		WHERE %s
-		GROUP BY status
-	`, whereClause)
+	type statusCount struct {
+		Status string
+		Count  int
+	}
+	var statusCounts []statusCount
 	
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
+	if err := baseQuery.
+		Select("status, COUNT(*) as count").
+		Group("status").
+		Scan(&statusCounts).Error; err != nil {
 		return nil, fmt.Errorf("query status stats: %w", err)
 	}
-	defer rows.Close()
 	
-	for rows.Next() {
-		var status Status
-		var count int
-		if err := rows.Scan(&status, &count); err != nil {
-			return nil, fmt.Errorf("scan status stats: %w", err)
-		}
-		stats.ByStatus[status] = count
-		stats.TotalCount += count
+	for _, sc := range statusCounts {
+		status := Status(sc.Status)
+		stats.ByStatus[status] = sc.Count
+		stats.TotalCount += sc.Count
 	}
 	
 	// Get counts by type
-	query = fmt.Sprintf(`
-		SELECT type, COUNT(*) as count
-		FROM operations
-		WHERE %s
-		GROUP BY type
-	`, whereClause)
+	type typeCount struct {
+		Type  string
+		Count int
+	}
+	var typeCounts []typeCount
 	
-	rows, err = s.db.QueryContext(ctx, query, args...)
-	if err != nil {
+	if err := baseQuery.
+		Select("type, COUNT(*) as count").
+		Group("type").
+		Scan(&typeCounts).Error; err != nil {
 		return nil, fmt.Errorf("query type stats: %w", err)
 	}
-	defer rows.Close()
 	
-	for rows.Next() {
-		var opType OperationType
-		var count int
-		if err := rows.Scan(&opType, &count); err != nil {
-			return nil, fmt.Errorf("scan type stats: %w", err)
-		}
-		stats.ByType[opType] = count
+	for _, tc := range typeCounts {
+		opType := OperationType(tc.Type)
+		stats.ByType[opType] = tc.Count
 	}
 	
 	// Get counts by priority
-	query = fmt.Sprintf(`
-		SELECT priority, COUNT(*) as count
-		FROM operations
-		WHERE %s
-		GROUP BY priority
-	`, whereClause)
+	type priorityCount struct {
+		Priority string
+		Count    int
+	}
+	var priorityCounts []priorityCount
 	
-	rows, err = s.db.QueryContext(ctx, query, args...)
-	if err != nil {
+	if err := baseQuery.
+		Select("priority, COUNT(*) as count").
+		Group("priority").
+		Scan(&priorityCounts).Error; err != nil {
 		return nil, fmt.Errorf("query priority stats: %w", err)
 	}
-	defer rows.Close()
 	
-	for rows.Next() {
-		var priority Priority
-		var count int
-		if err := rows.Scan(&priority, &count); err != nil {
-			return nil, fmt.Errorf("scan priority stats: %w", err)
-		}
-		stats.ByPriority[priority] = count
+	for _, pc := range priorityCounts {
+		priority := Priority(pc.Priority)
+		stats.ByPriority[priority] = pc.Count
 	}
 	
 	// Get hourly distribution for the last 24 hours
-	query = fmt.Sprintf(`
-		SELECT 
-			date_trunc('hour', created_at) as hour,
-			COUNT(*) as count
-		FROM operations
-		WHERE %s
-		GROUP BY hour
-		ORDER BY hour DESC
-		LIMIT 24
-	`, whereClause)
+	type hourlyCount struct {
+		Hour  time.Time
+		Count int
+	}
+	var hourlyCounts []hourlyCount
 	
-	rows, err = s.db.QueryContext(ctx, query, args...)
-	if err != nil {
+	if err := baseQuery.
+		Select("date_trunc('hour', created_at) as hour, COUNT(*) as count").
+		Group("hour").
+		Order("hour DESC").
+		Limit(24).
+		Scan(&hourlyCounts).Error; err != nil {
 		return nil, fmt.Errorf("query hourly stats: %w", err)
 	}
-	defer rows.Close()
 	
-	for rows.Next() {
-		var hourStat HourlyStats
-		if err := rows.Scan(&hourStat.Hour, &hourStat.Count); err != nil {
-			return nil, fmt.Errorf("scan hourly stats: %w", err)
-		}
-		stats.ByHour = append(stats.ByHour, hourStat)
+	for _, hc := range hourlyCounts {
+		stats.ByHour = append(stats.ByHour, HourlyStats{
+			Hour:  hc.Hour,
+			Count: hc.Count,
+		})
 	}
 	
 	// Get average times
-	query = fmt.Sprintf(`
-		SELECT 
+	type avgTimes struct {
+		AvgWaitTime    *float64
+		AvgProcessTime *float64
+	}
+	var times avgTimes
+	
+	if err := baseQuery.
+		Select(`
 			AVG(EXTRACT(EPOCH FROM (COALESCE(started_at, NOW()) - created_at))) as avg_wait_time,
 			AVG(EXTRACT(EPOCH FROM (completed_at - started_at))) as avg_process_time
-		FROM operations
-		WHERE %s AND started_at IS NOT NULL
-	`, whereClause)
-	
-	var avgWait, avgProcess *float64
-	err = s.db.QueryRowContext(ctx, query, args...).Scan(&avgWait, &avgProcess)
-	if err != nil && err != sql.ErrNoRows {
+		`).
+		Where("started_at IS NOT NULL").
+		Scan(&times).Error; err != nil && err != gorm.ErrRecordNotFound {
 		return nil, fmt.Errorf("query avg times: %w", err)
 	}
 	
-	if avgWait != nil {
-		stats.AvgWaitTime = *avgWait
+	if times.AvgWaitTime != nil {
+		stats.AvgWaitTime = *times.AvgWaitTime
 	}
-	if avgProcess != nil {
-		stats.AvgProcessTime = *avgProcess
+	if times.AvgProcessTime != nil {
+		stats.AvgProcessTime = *times.AvgProcessTime
 	}
 	
 	return stats, nil
@@ -521,23 +391,16 @@ func (s *Store) WaitForOperation(ctx context.Context, id string, timeout time.Du
 
 // CancelOperation cancels a pending or processing operation
 func (s *Store) CancelOperation(ctx context.Context, id string) error {
-	result, err := s.db.ExecContext(ctx, `
-		UPDATE operations 
-		SET status = $1, updated_at = $2
-		WHERE id = $3 AND status IN ($4, $5)`,
-		StatusCancelled, time.Now(), id, StatusPending, StatusProcessing,
-	)
+	result := s.db.WithContext(ctx).
+		Model(&gormmodels.Operation{}).
+		Where("id = ? AND status IN (?, ?)", id, gormmodels.OpStatusPending, gormmodels.OpStatusProcessing).
+		Update("status", gormmodels.OpStatusCancelled)
 	
-	if err != nil {
-		return fmt.Errorf("cancel operation: %w", err)
+	if result.Error != nil {
+		return fmt.Errorf("cancel operation: %w", result.Error)
 	}
 	
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("get rows affected: %w", err)
-	}
-	
-	if rowsAffected == 0 {
+	if result.RowsAffected == 0 {
 		return fmt.Errorf("operation cannot be cancelled (not found or already completed)")
 	}
 	
@@ -551,35 +414,35 @@ func (s *Store) GetPipelineConfig(ctx context.Context) (*PipelineConfig, error) 
 		OperationTimeouts:  make(map[OperationType]int),
 	}
 	
+	// Define a model for pipeline_config table
+	type pipelineConfigRow struct {
+		Key   string          `gorm:"primaryKey"`
+		Value json.RawMessage `gorm:"type:json"`
+	}
+	
 	// Query all config values
-	rows, err := s.db.QueryContext(ctx, `SELECT key, value FROM pipeline_config`)
-	if err != nil {
+	var rows []pipelineConfigRow
+	if err := s.db.WithContext(ctx).
+		Table("pipeline_config").
+		Find(&rows).Error; err != nil {
 		return nil, fmt.Errorf("query config: %w", err)
 	}
-	defer rows.Close()
 	
-	for rows.Next() {
-		var key string
-		var value json.RawMessage
-		
-		if err := rows.Scan(&key, &value); err != nil {
-			return nil, fmt.Errorf("scan config: %w", err)
-		}
-		
-		switch key {
+	for _, row := range rows {
+		switch row.Key {
 		case "processing_capacity":
 			var capacityConfig struct {
 				Total              int                  `json:"total"`
 				PriorityAllocation map[Priority]float64 `json:"priority_allocation"`
 			}
-			if err := json.Unmarshal(value, &capacityConfig); err != nil {
+			if err := json.Unmarshal(row.Value, &capacityConfig); err != nil {
 				return nil, fmt.Errorf("unmarshal capacity config: %w", err)
 			}
 			config.TotalCapacity = capacityConfig.Total
 			config.PriorityAllocation = capacityConfig.PriorityAllocation
 			
 		case "retry_policy":
-			if err := json.Unmarshal(value, &config.RetryPolicy); err != nil {
+			if err := json.Unmarshal(row.Value, &config.RetryPolicy); err != nil {
 				return nil, fmt.Errorf("unmarshal retry policy: %w", err)
 			}
 			
@@ -588,9 +451,9 @@ func (s *Store) GetPipelineConfig(ctx context.Context) (*PipelineConfig, error) 
 				Default           int                       `json:"default"`
 				OperationTimeouts map[OperationType]int     `json:"operation_timeouts"`
 			}
-			if err := json.Unmarshal(value, &timeouts); err != nil {
+			if err := json.Unmarshal(row.Value, &timeouts); err != nil {
 				// Try unmarshaling directly as map
-				if err := json.Unmarshal(value, &config.OperationTimeouts); err != nil {
+				if err := json.Unmarshal(row.Value, &config.OperationTimeouts); err != nil {
 					return nil, fmt.Errorf("unmarshal timeouts: %w", err)
 				}
 				config.DefaultTimeout = 300 // Default 5 minutes
@@ -619,34 +482,43 @@ func (s *Store) UpdatePipelineConfig(ctx context.Context, key string, value inte
 		return fmt.Errorf("marshal config value: %w", err)
 	}
 	
-	_, err = s.db.ExecContext(ctx, `
-		UPDATE pipeline_config 
-		SET value = $1, updated_at = $2
-		WHERE key = $3`,
-		jsonValue, time.Now(), key,
-	)
+	// Use map for updates to avoid struct tags
+	updates := map[string]interface{}{
+		"value":      jsonValue,
+		"updated_at": time.Now(),
+	}
 	
-	if err != nil {
-		return fmt.Errorf("update config: %w", err)
+	result := s.db.WithContext(ctx).
+		Table("pipeline_config").
+		Where("key = ?", key).
+		Updates(updates)
+	
+	if result.Error != nil {
+		return fmt.Errorf("update config: %w", result.Error)
 	}
 	
 	return nil
 }
 
-// ListOperationsFilters defines filters for listing operations
-type ListOperationsFilters struct {
-	Status        *Status
-	Type          *OperationType
-	Priority      *Priority
-	CreatedBy     *string
-	CorrelationID *string
-	Search        *string
-	StartDate     *time.Time
-	EndDate       *time.Time
-	CreatedAfter  *time.Time
-	CreatedBefore *time.Time
-	SortBy        *string
-	SortOrder     *string
-	Limit         int
-	Offset        int
+// convertToOperation converts GORM operation to pipeline Operation
+func (s *Store) convertToOperation(gormOp *gormmodels.Operation) *Operation {
+	return &Operation{
+		ID:                 gormOp.ID,
+		Type:               OperationType(gormOp.Type),
+		Priority:           Priority(gormOp.Priority),
+		Status:             Status(gormOp.Status),
+		Payload:            gormOp.Payload,
+		Result:             gormOp.Result,
+		ErrorMessage:       gormOp.ErrorMessage,
+		RetryCount:         gormOp.RetryCount,
+		MaxRetries:         gormOp.MaxRetries,
+		ScheduledAt:        gormOp.ScheduledAt,
+		StartedAt:          gormOp.StartedAt,
+		CompletedAt:        gormOp.CompletedAt,
+		CreatedBy:          gormOp.CreatedBy,
+		CyberArkInstanceID: gormOp.CyberArkInstanceID,
+		CorrelationID:      gormOp.CorrelationID,
+		CreatedAt:          gormOp.CreatedAt,
+		UpdatedAt:          gormOp.UpdatedAt,
+	}
 }

@@ -2,8 +2,8 @@ package pipeline
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"math/rand"
@@ -12,11 +12,15 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"gorm.io/gorm"
+	
+	"github.com/orca-ng/orca/internal/database"
+	gormmodels "github.com/orca-ng/orca/internal/models/gorm"
 )
 
-// Processor manages the processing pipeline with priority lanes
+// Processor manages the processing pipeline with priority lanes using GORM
 type Processor struct {
-	db              *sql.DB
+	db              *database.GormDB
 	config          *PipelineConfig
 	handlers        map[OperationType]OperationHandler
 	logger          *logrus.Logger
@@ -40,8 +44,8 @@ type worker struct {
 	proc     *Processor
 }
 
-// NewProcessor creates a new pipeline processor
-func NewProcessor(db *sql.DB, config *PipelineConfig, logger *logrus.Logger) *Processor {
+// NewProcessor creates a new pipeline processor using GORM
+func NewProcessor(db *database.GormDB, config *PipelineConfig, logger *logrus.Logger) *Processor {
 	processedOps := make(map[OperationType]*int64)
 	for _, opType := range []OperationType{
 		OpTypeSafeProvision, OpTypeSafeModify, OpTypeSafeDelete,
@@ -169,7 +173,7 @@ func (w *worker) run(ctx context.Context) {
 		default:
 			// Try to fetch and process an operation
 			if err := w.processNext(ctx); err != nil {
-				if err != sql.ErrNoRows {
+				if !errors.Is(err, gorm.ErrRecordNotFound) {
 					w.proc.logger.WithError(err).Error("Error processing operation")
 				}
 				// Back off a bit if no work or error
@@ -181,55 +185,39 @@ func (w *worker) run(ctx context.Context) {
 
 // processNext fetches and processes the next operation for this worker's priority
 func (w *worker) processNext(ctx context.Context) error {
-	// Start a transaction to fetch and lock an operation
-	tx, err := w.proc.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin transaction: %w", err)
-	}
-	defer tx.Rollback()
+	var op gormmodels.Operation
 	
-	// Fetch next pending operation for this priority
-	var op Operation
-	query := `
-		SELECT id, type, priority, status, payload, result, error_message,
-		       retry_count, max_retries, scheduled_at, started_at, completed_at,
-		       created_by, cyberark_instance_id, correlation_id, created_at, updated_at
-		FROM operations
-		WHERE status = 'pending' 
-		  AND priority = $1
-		  AND scheduled_at <= NOW()
-		ORDER BY scheduled_at
-		LIMIT 1
-		FOR UPDATE SKIP LOCKED
-	`
+	// Use a transaction to fetch and lock an operation
+	err := w.proc.db.Transaction(func(tx *gorm.DB) error {
+		// Fetch next pending operation for this priority
+		// Using raw SQL for FOR UPDATE SKIP LOCKED as GORM doesn't have direct support
+		result := tx.Set("gorm:query_option", "FOR UPDATE SKIP LOCKED").
+			Where("status = ? AND priority = ? AND scheduled_at <= ?", 
+				gormmodels.OpStatusPending, w.priority, time.Now()).
+			Order("scheduled_at").
+			Limit(1).
+			First(&op)
+		
+		if result.Error != nil {
+			return result.Error
+		}
+		
+		// Mark as processing
+		now := time.Now()
+		updates := map[string]interface{}{
+			"status":     gormmodels.OpStatusProcessing,
+			"started_at": now,
+		}
+		
+		if err := tx.Model(&op).Updates(updates).Error; err != nil {
+			return fmt.Errorf("update operation status: %w", err)
+		}
+		
+		return nil
+	})
 	
-	err = tx.QueryRowContext(ctx, query, w.priority).Scan(
-		&op.ID, &op.Type, &op.Priority, &op.Status, &op.Payload, &op.Result,
-		&op.ErrorMessage, &op.RetryCount, &op.MaxRetries, &op.ScheduledAt,
-		&op.StartedAt, &op.CompletedAt, &op.CreatedBy, &op.CyberArkInstanceID,
-		&op.CorrelationID, &op.CreatedAt, &op.UpdatedAt,
-	)
 	if err != nil {
 		return err
-	}
-	
-	// Mark as processing
-	now := time.Now()
-	op.Status = StatusProcessing
-	op.StartedAt = &now
-	
-	_, err = tx.ExecContext(ctx, `
-		UPDATE operations 
-		SET status = $1, started_at = $2, updated_at = $3
-		WHERE id = $4
-	`, op.Status, op.StartedAt, now, op.ID)
-	if err != nil {
-		return fmt.Errorf("update operation status: %w", err)
-	}
-	
-	// Commit transaction to release the lock
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit transaction: %w", err)
 	}
 	
 	// Increment active workers count
@@ -244,8 +232,11 @@ func (w *worker) processNext(ctx context.Context) error {
 		"worker_id":   w.id,
 	}).Info("Processing operation")
 	
+	// Convert GORM operation to pipeline Operation
+	pipelineOp := w.convertToOperation(&op)
+	
 	// Get handler
-	handler, exists := w.proc.handlers[op.Type]
+	handler, exists := w.proc.handlers[OperationType(op.Type)]
 	if !exists {
 		w.proc.completeOperation(&op, nil, fmt.Errorf("no handler registered for operation type: %s", op.Type))
 		return nil
@@ -253,7 +244,7 @@ func (w *worker) processNext(ctx context.Context) error {
 	
 	// Create timeout context
 	timeout := w.proc.config.DefaultTimeout
-	if t, ok := w.proc.config.OperationTimeouts[op.Type]; ok {
+	if t, ok := w.proc.config.OperationTimeouts[OperationType(op.Type)]; ok {
 		timeout = t
 	}
 	
@@ -261,7 +252,7 @@ func (w *worker) processNext(ctx context.Context) error {
 	defer cancel()
 	
 	// Execute handler
-	err = handler.Handle(opCtx, &op)
+	err = handler.Handle(opCtx, pipelineOp)
 	
 	if err != nil {
 		// Check if retryable
@@ -271,60 +262,80 @@ func (w *worker) processNext(ctx context.Context) error {
 			w.proc.completeOperation(&op, nil, err)
 		}
 	} else {
-		// Success - dereference Result if it's not nil
+		// Success - use Result from the pipeline operation
 		var result json.RawMessage
-		if op.Result != nil {
-			result = *op.Result
+		if pipelineOp.Result != nil {
+			result = *pipelineOp.Result
 		}
 		w.proc.completeOperation(&op, result, nil)
 		
 		// Update metrics
-		atomic.AddInt64(w.proc.processedOps[op.Type], 1)
+		atomic.AddInt64(w.proc.processedOps[OperationType(op.Type)], 1)
 	}
 	
 	return nil
 }
 
+// convertToOperation converts GORM operation to pipeline Operation
+func (w *worker) convertToOperation(gormOp *gormmodels.Operation) *Operation {
+	return &Operation{
+		ID:                 gormOp.ID,
+		Type:               OperationType(gormOp.Type),
+		Priority:           Priority(gormOp.Priority),
+		Status:             Status(gormOp.Status),
+		Payload:            gormOp.Payload,
+		Result:             gormOp.Result,
+		ErrorMessage:       gormOp.ErrorMessage,
+		RetryCount:         gormOp.RetryCount,
+		MaxRetries:         gormOp.MaxRetries,
+		ScheduledAt:        gormOp.ScheduledAt,
+		StartedAt:          gormOp.StartedAt,
+		CompletedAt:        gormOp.CompletedAt,
+		CreatedBy:          gormOp.CreatedBy,
+		CyberArkInstanceID: gormOp.CyberArkInstanceID,
+		CorrelationID:      gormOp.CorrelationID,
+		CreatedAt:          gormOp.CreatedAt,
+		UpdatedAt:          gormOp.UpdatedAt,
+	}
+}
+
 // completeOperation marks an operation as completed or failed
-func (p *Processor) completeOperation(op *Operation, result json.RawMessage, err error) {
+func (p *Processor) completeOperation(op *gormmodels.Operation, result json.RawMessage, err error) {
 	now := time.Now()
-	op.CompletedAt = &now
+	updates := map[string]interface{}{
+		"completed_at": now,
+	}
 	
 	if err != nil {
-		op.Status = StatusFailed
+		updates["status"] = gormmodels.OpStatusFailed
 		errMsg := err.Error()
-		op.ErrorMessage = &errMsg
+		updates["error_message"] = errMsg
 		
 		p.logger.WithFields(logrus.Fields{
 			"operation_id": op.ID,
 			"error":        err,
 		}).Error("Operation failed")
 	} else {
-		op.Status = StatusCompleted
+		updates["status"] = gormmodels.OpStatusCompleted
 		if result != nil {
-			op.Result = &result
+			updates["result"] = result
 		}
 		
+		duration := now.Sub(*op.StartedAt).Seconds()
 		p.logger.WithFields(logrus.Fields{
 			"operation_id": op.ID,
-			"duration":     op.CompletedAt.Sub(*op.StartedAt).Seconds(),
+			"duration":     duration,
 		}).Info("Operation completed")
 	}
 	
 	// Update in database
-	_, dbErr := p.db.Exec(`
-		UPDATE operations 
-		SET status = $1, result = $2, error_message = $3, completed_at = $4, updated_at = $5
-		WHERE id = $6
-	`, op.Status, op.Result, op.ErrorMessage, op.CompletedAt, now, op.ID)
-	
-	if dbErr != nil {
+	if dbErr := p.db.Model(op).Updates(updates).Error; dbErr != nil {
 		p.logger.WithError(dbErr).Error("Failed to update operation status")
 	}
 }
 
 // retryOperation schedules an operation for retry
-func (p *Processor) retryOperation(op *Operation, err error) {
+func (p *Processor) retryOperation(op *gormmodels.Operation, err error) {
 	op.RetryCount++
 	
 	// Calculate next retry time with exponential backoff
@@ -348,14 +359,15 @@ func (p *Processor) retryOperation(op *Operation, err error) {
 	
 	// Update in database
 	errMsg := err.Error()
-	_, dbErr := p.db.Exec(`
-		UPDATE operations 
-		SET status = $1, retry_count = $2, scheduled_at = $3, error_message = $4, 
-		    started_at = NULL, updated_at = $5
-		WHERE id = $6
-	`, StatusPending, op.RetryCount, scheduledAt, errMsg, time.Now(), op.ID)
+	updates := map[string]interface{}{
+		"status":        gormmodels.OpStatusPending,
+		"retry_count":   op.RetryCount,
+		"scheduled_at":  scheduledAt,
+		"error_message": errMsg,
+		"started_at":    nil,
+	}
 	
-	if dbErr != nil {
+	if dbErr := p.db.Model(op).Updates(updates).Error; dbErr != nil {
 		p.logger.WithError(dbErr).Error("Failed to schedule retry")
 	}
 }
@@ -380,24 +392,26 @@ func (p *Processor) GetMetrics() ProcessingMetrics {
 	}
 	
 	// Query queue depths and processing counts from database
-	rows, err := p.db.Query(`
-		SELECT priority, status, COUNT(*) 
-		FROM operations 
-		WHERE status IN ('pending', 'processing')
-		GROUP BY priority, status
-	`)
+	type metricResult struct {
+		Priority string
+		Status   string
+		Count    int64
+	}
+	
+	var results []metricResult
+	err := p.db.Model(&gormmodels.Operation{}).
+		Select("priority, status, COUNT(*) as count").
+		Where("status IN ?", []string{gormmodels.OpStatusPending, gormmodels.OpStatusProcessing}).
+		Group("priority, status").
+		Scan(&results).Error
+		
 	if err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var priority Priority
-			var status Status
-			var count int
-			if err := rows.Scan(&priority, &status, &count); err == nil {
-				if status == StatusPending {
-					metrics.QueueDepth[priority] = count
-				} else if status == StatusProcessing {
-					metrics.ProcessingCount[priority] = count
-				}
+		for _, r := range results {
+			priority := Priority(r.Priority)
+			if r.Status == gormmodels.OpStatusPending {
+				metrics.QueueDepth[priority] = int(r.Count)
+			} else if r.Status == gormmodels.OpStatusProcessing {
+				metrics.ProcessingCount[priority] = int(r.Count)
 			}
 		}
 	}

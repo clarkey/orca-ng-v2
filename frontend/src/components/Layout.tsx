@@ -23,6 +23,7 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
+  ShieldCheck,
 } from 'lucide-react';
 
 const STORAGE_KEY_SIDEBAR_COLLAPSED = 'orca-sidebar-collapsed';
@@ -144,6 +145,7 @@ export function Layout() {
   const settingsNavigation = [
     { name: 'General', href: '/settings', icon: Settings },
     { name: 'Access Roles', href: '/settings/access-roles', icon: Key },
+    { name: 'Certificate Authorities', href: '/settings/certificates', icon: ShieldCheck },
     { name: 'SSO Configuration', href: '/settings/sso', icon: Shield },
     { name: 'Notifications', href: '/settings/notifications', icon: Bell },
     { name: 'Database', href: '/settings/database', icon: Database },
@@ -258,11 +260,12 @@ export function Layout() {
 
           {/* CyberArk Management */}
           <div>
-            {!isCollapsed && (
-              <h3 className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 whitespace-nowrap overflow-hidden">
-                CyberArk Management
-              </h3>
-            )}
+            <h3 className={cn(
+              "h-5 flex items-center px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 whitespace-nowrap overflow-hidden",
+              isCollapsed && "opacity-0 select-none pointer-events-none"
+            )}>
+              CyberArk Management
+            </h3>
             <ul className="space-y-1">
               {navigation.cyberark.map((item) => (
                 <li key={item.name}>
@@ -278,11 +281,12 @@ export function Layout() {
 
           {/* Operations & Processing */}
           <div>
-            {!isCollapsed && (
-              <h3 className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 whitespace-nowrap overflow-hidden">
-                Operations & Processing
-              </h3>
-            )}
+            <h3 className={cn(
+              "h-5 flex items-center px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 whitespace-nowrap overflow-hidden",
+              isCollapsed && "opacity-0 select-none pointer-events-none"
+            )}>
+              Operations & Processing
+            </h3>
             <ul className="space-y-1">
               {navigation.operations.map((item) => (
                 <li key={item.name}>
@@ -298,11 +302,12 @@ export function Layout() {
 
           {/* Administration */}
           <div>
-            {!isCollapsed && (
-              <h3 className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 whitespace-nowrap overflow-hidden">
-                Administration
-              </h3>
-            )}
+            <h3 className={cn(
+              "h-5 flex items-center px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 whitespace-nowrap overflow-hidden",
+              isCollapsed && "opacity-0 select-none pointer-events-none"
+            )}>
+              Administration
+            </h3>
             <ul className="space-y-1">
               {navigation.administration.map((item) => (
                 <li key={item.name}>
@@ -347,11 +352,12 @@ export function Layout() {
 
               {/* Settings Items */}
               <div>
-                {!isCollapsed && (
-                  <h3 className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 whitespace-nowrap overflow-hidden">
-                    Settings
-                  </h3>
-                )}
+                <h3 className={cn(
+                  "px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 whitespace-nowrap overflow-hidden",
+                  isCollapsed && "opacity-0 select-none pointer-events-none"
+                )}>
+                  Settings
+                </h3>
                 <ul className="space-y-1">
                   {settingsNavigation.map((item) => (
                     <li key={item.name}>

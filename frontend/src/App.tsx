@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { AuthProvider } from '@/contexts/AuthContext';
@@ -21,6 +21,7 @@ import SettingsSSO from '@/pages/SettingsSSO';
 import SettingsNotifications from '@/pages/SettingsNotifications';
 import SettingsDatabase from '@/pages/SettingsDatabase';
 import SettingsAPI from '@/pages/SettingsAPI';
+import { CertificateAuthorities } from '@/pages/CertificateAuthorities';
 
 // Create a client
 const queryClient = new QueryClient({
@@ -77,6 +78,7 @@ function App() {
                   <Route path="/settings/notifications" element={<SettingsNotifications />} />
                   <Route path="/settings/database" element={<SettingsDatabase />} />
                   <Route path="/settings/api" element={<SettingsAPI />} />
+                  <Route path="/settings/certificates" element={<CertificateAuthorities />} />
                 </Route>
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>

@@ -8,13 +8,15 @@ import (
 	"net/http"
 	"sync"
 	"time"
-	
-	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/sirupsen/logrus"
+	
+	"github.com/orca-ng/orca/internal/database"
+	gormmodels "github.com/orca-ng/orca/internal/models/gorm"
 )
 
 type CertificateManager struct {
-	db              *pgxpool.Pool
+	db              *database.GormDB
 	logger          *logrus.Logger
 	certService     *CertificateService
 	certPool        *x509.CertPool
@@ -23,7 +25,7 @@ type CertificateManager struct {
 	refreshInterval time.Duration
 }
 
-func NewCertificateManager(db *pgxpool.Pool, logger *logrus.Logger) *CertificateManager {
+func NewCertificateManager(db *database.GormDB, logger *logrus.Logger) *CertificateManager {
 	return &CertificateManager{
 		db:              db,
 		logger:          logger,
@@ -54,30 +56,18 @@ func (cm *CertificateManager) GetCertPool(ctx context.Context) (*x509.CertPool, 
 }
 
 func (cm *CertificateManager) refreshCertificates(ctx context.Context) error {
-	query := `
-		SELECT certificate
-		FROM certificate_authorities
-		WHERE is_active = true AND not_after > CURRENT_TIMESTAMP
-	`
+	var certificates []gormmodels.CertificateAuthority
 	
-	rows, err := cm.db.Query(ctx, query)
-	if err != nil {
+	// Query active, non-expired certificates
+	if err := cm.db.WithContext(ctx).
+		Where("is_active = ? AND not_after > ?", true, time.Now()).
+		Find(&certificates).Error; err != nil {
 		return fmt.Errorf("failed to query active certificates: %w", err)
 	}
-	defer rows.Close()
 	
 	var pemCertificates []string
-	for rows.Next() {
-		var cert string
-		if err := rows.Scan(&cert); err != nil {
-			cm.logger.WithError(err).Error("Failed to scan certificate")
-			continue
-		}
-		pemCertificates = append(pemCertificates, cert)
-	}
-	
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("error iterating rows: %w", err)
+	for _, cert := range certificates {
+		pemCertificates = append(pemCertificates, cert.Certificate)
 	}
 	
 	pool, err := cm.certService.GetSystemAndCustomCertPool(pemCertificates)

@@ -2,83 +2,54 @@ package database
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"time"
 
+	"gorm.io/gorm"
+	
 	"github.com/orca-ng/orca/internal/models"
+	gormmodels "github.com/orca-ng/orca/internal/models/gorm"
 	"github.com/orca-ng/orca/pkg/crypto"
 	"github.com/orca-ng/orca/pkg/session"
 	"github.com/orca-ng/orca/pkg/ulid"
 )
 
-func (db *DB) GetUserByUsername(ctx context.Context, username string) (*models.User, error) {
-	var user models.User
-	query := `
-		SELECT id, username, password_hash, created_at, updated_at, last_login_at, is_active, is_admin
-		FROM users
-		WHERE username = $1
-	`
+// GetUserByUsername retrieves a user by username using GORM
+func (db *GormDB) GetUserByUsername(ctx context.Context, username string) (*models.User, error) {
+	var gormUser gormmodels.User
 	
-	row := db.pool.QueryRow(ctx, query, username)
-	err := row.Scan(
-		&user.ID,
-		&user.Username,
-		&user.PasswordHash,
-		&user.CreatedAt,
-		&user.UpdatedAt,
-		&user.LastLoginAt,
-		&user.IsActive,
-		&user.IsAdmin,
-	)
-	
-	if err != nil {
-		if err == sql.ErrNoRows {
+	if err := db.WithContext(ctx).Where("username = ?", username).First(&gormUser).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
 			return nil, fmt.Errorf("user not found")
 		}
 		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
 	
-	return &user, nil
+	return convertToUser(&gormUser), nil
 }
 
-func (db *DB) GetUserByID(ctx context.Context, userID string) (*models.User, error) {
-	var user models.User
-	query := `
-		SELECT id, username, password_hash, created_at, updated_at, last_login_at, is_active, is_admin
-		FROM users
-		WHERE id = $1
-	`
+// GetUserByID retrieves a user by ID using GORM
+func (db *GormDB) GetUserByID(ctx context.Context, userID string) (*models.User, error) {
+	var gormUser gormmodels.User
 	
-	row := db.pool.QueryRow(ctx, query, userID)
-	err := row.Scan(
-		&user.ID,
-		&user.Username,
-		&user.PasswordHash,
-		&user.CreatedAt,
-		&user.UpdatedAt,
-		&user.LastLoginAt,
-		&user.IsActive,
-		&user.IsAdmin,
-	)
-	
-	if err != nil {
-		if err == sql.ErrNoRows {
+	if err := db.WithContext(ctx).First(&gormUser, "id = ?", userID).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
 			return nil, fmt.Errorf("user not found")
 		}
 		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
 	
-	return &user, nil
+	return convertToUser(&gormUser), nil
 }
 
-func (db *DB) CreateUser(ctx context.Context, username, password string, isAdmin bool) (*models.User, error) {
+// CreateUser creates a new user using GORM
+func (db *GormDB) CreateUser(ctx context.Context, username, password string, isAdmin bool) (*models.User, error) {
 	hashedPassword, err := crypto.HashPassword(password)
 	if err != nil {
 		return nil, fmt.Errorf("failed to hash password: %w", err)
 	}
 	
-	user := &models.User{
+	gormUser := &gormmodels.User{
 		ID:           ulid.New(ulid.UserPrefix),
 		Username:     username,
 		PasswordHash: hashedPassword,
@@ -86,37 +57,35 @@ func (db *DB) CreateUser(ctx context.Context, username, password string, isAdmin
 		IsAdmin:      isAdmin,
 	}
 	
-	query := `
-		INSERT INTO users (id, username, password_hash, is_active, is_admin)
-		VALUES ($1, $2, $3, $4, $5)
-		RETURNING created_at, updated_at
-	`
-	
-	row := db.pool.QueryRow(ctx, query, user.ID, user.Username, user.PasswordHash, user.IsActive, user.IsAdmin)
-	err = row.Scan(&user.CreatedAt, &user.UpdatedAt)
-	if err != nil {
+	if err := db.WithContext(ctx).Create(gormUser).Error; err != nil {
 		return nil, fmt.Errorf("failed to create user: %w", err)
 	}
 	
-	return user, nil
+	return convertToUser(gormUser), nil
 }
 
-func (db *DB) UpdateLastLogin(ctx context.Context, userID string) error {
-	query := `UPDATE users SET last_login_at = $1 WHERE id = $2`
-	_, err := db.pool.Exec(ctx, query, time.Now().UTC(), userID)
-	if err != nil {
-		return fmt.Errorf("failed to update last login: %w", err)
+// UpdateLastLogin updates the last login timestamp for a user using GORM
+func (db *GormDB) UpdateLastLogin(ctx context.Context, userID string) error {
+	result := db.WithContext(ctx).
+		Model(&gormmodels.User{}).
+		Where("id = ?", userID).
+		Update("last_login_at", time.Now().UTC())
+	
+	if result.Error != nil {
+		return fmt.Errorf("failed to update last login: %w", result.Error)
 	}
+	
 	return nil
 }
 
-func (db *DB) CreateSession(ctx context.Context, userID, userAgent, ipAddress string, duration time.Duration) (*models.Session, error) {
+// CreateSession creates a new session using GORM
+func (db *GormDB) CreateSession(ctx context.Context, userID, userAgent, ipAddress string, duration time.Duration) (*models.Session, error) {
 	token, err := session.GenerateToken()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate session token: %w", err)
 	}
 	
-	sess := &models.Session{
+	gormSession := &gormmodels.Session{
 		ID:        ulid.New(ulid.SessionPrefix),
 		UserID:    userID,
 		Token:     token,
@@ -124,96 +93,108 @@ func (db *DB) CreateSession(ctx context.Context, userID, userAgent, ipAddress st
 	}
 	
 	if userAgent != "" {
-		sess.UserAgent = &userAgent
+		gormSession.UserAgent = &userAgent
 	}
 	if ipAddress != "" {
-		sess.IPAddress = &ipAddress
+		gormSession.IPAddress = &ipAddress
 	}
 	
-	query := `
-		INSERT INTO sessions (id, user_id, token, expires_at, user_agent, ip_address)
-		VALUES ($1, $2, $3, $4, $5, $6)
-		RETURNING created_at, updated_at
-	`
-	
-	row := db.pool.QueryRow(ctx, query, sess.ID, sess.UserID, sess.Token, sess.ExpiresAt, sess.UserAgent, sess.IPAddress)
-	err = row.Scan(&sess.CreatedAt, &sess.UpdatedAt)
-	if err != nil {
+	if err := db.WithContext(ctx).Create(gormSession).Error; err != nil {
 		return nil, fmt.Errorf("failed to create session: %w", err)
 	}
 	
-	return sess, nil
+	return convertToSession(gormSession), nil
 }
 
-func (db *DB) GetSessionByToken(ctx context.Context, token string) (*models.Session, error) {
-	var sess models.Session
-	query := `
-		SELECT id, user_id, token, expires_at, created_at, updated_at, user_agent, ip_address::text
-		FROM sessions
-		WHERE token = $1 AND expires_at > $2
-	`
+// GetSessionByToken retrieves a session by token using GORM
+func (db *GormDB) GetSessionByToken(ctx context.Context, token string) (*models.Session, error) {
+	var gormSession gormmodels.Session
 	
-	row := db.pool.QueryRow(ctx, query, token, time.Now().UTC())
-	err := row.Scan(
-		&sess.ID,
-		&sess.UserID,
-		&sess.Token,
-		&sess.ExpiresAt,
-		&sess.CreatedAt,
-		&sess.UpdatedAt,
-		&sess.UserAgent,
-		&sess.IPAddress,
-	)
+	err := db.WithContext(ctx).
+		Where("token = ? AND expires_at > ?", token, time.Now().UTC()).
+		First(&gormSession).Error
 	
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if err == gorm.ErrRecordNotFound {
 			return nil, fmt.Errorf("session not found or expired")
 		}
 		return nil, fmt.Errorf("failed to get session: %w", err)
 	}
 	
-	return &sess, nil
+	return convertToSession(&gormSession), nil
 }
 
-func (db *DB) DeleteSession(ctx context.Context, token string) error {
-	query := `DELETE FROM sessions WHERE token = $1`
-	_, err := db.pool.Exec(ctx, query, token)
-	if err != nil {
-		return fmt.Errorf("failed to delete session: %w", err)
+// DeleteSession deletes a session by token using GORM
+func (db *GormDB) DeleteSession(ctx context.Context, token string) error {
+	result := db.WithContext(ctx).Where("token = ?", token).Delete(&gormmodels.Session{})
+	
+	if result.Error != nil {
+		return fmt.Errorf("failed to delete session: %w", result.Error)
 	}
+	
 	return nil
 }
 
-func (db *DB) DeleteExpiredSessions(ctx context.Context) error {
-	query := `DELETE FROM sessions WHERE expires_at < $1`
-	_, err := db.pool.Exec(ctx, query, time.Now().UTC())
-	if err != nil {
-		return fmt.Errorf("failed to delete expired sessions: %w", err)
+// DeleteExpiredSessions deletes expired sessions using GORM
+func (db *GormDB) DeleteExpiredSessions(ctx context.Context) error {
+	result := db.WithContext(ctx).
+		Where("expires_at < ?", time.Now().UTC()).
+		Delete(&gormmodels.Session{})
+	
+	if result.Error != nil {
+		return fmt.Errorf("failed to delete expired sessions: %w", result.Error)
 	}
+	
 	return nil
 }
 
-func (db *DB) UpdateUserPassword(ctx context.Context, username, newPassword string) error {
+// UpdateUserPassword updates a user's password using GORM
+func (db *GormDB) UpdateUserPassword(ctx context.Context, username, newPassword string) error {
 	hashedPassword, err := crypto.HashPassword(newPassword)
 	if err != nil {
 		return fmt.Errorf("failed to hash password: %w", err)
 	}
 	
-	query := `
-		UPDATE users 
-		SET password_hash = $1, updated_at = CURRENT_TIMESTAMP 
-		WHERE username = $2
-	`
+	result := db.WithContext(ctx).
+		Model(&gormmodels.User{}).
+		Where("username = ?", username).
+		Update("password_hash", hashedPassword)
 	
-	result, err := db.pool.Exec(ctx, query, hashedPassword, username)
-	if err != nil {
-		return fmt.Errorf("failed to update password: %w", err)
+	if result.Error != nil {
+		return fmt.Errorf("failed to update password: %w", result.Error)
 	}
 	
-	rowsAffected := result.RowsAffected()
-	if rowsAffected == 0 {
+	if result.RowsAffected == 0 {
 		return fmt.Errorf("user not found")
 	}
 	
 	return nil
+}
+
+// convertToUser converts GORM user model to regular user model
+func convertToUser(gu *gormmodels.User) *models.User {
+	return &models.User{
+		ID:           gu.ID,
+		Username:     gu.Username,
+		PasswordHash: gu.PasswordHash,
+		CreatedAt:    gu.CreatedAt,
+		UpdatedAt:    gu.UpdatedAt,
+		LastLoginAt:  gu.LastLoginAt,
+		IsActive:     gu.IsActive,
+		IsAdmin:      gu.IsAdmin,
+	}
+}
+
+// convertToSession converts GORM session model to regular session model
+func convertToSession(gs *gormmodels.Session) *models.Session {
+	return &models.Session{
+		ID:        gs.ID,
+		UserID:    gs.UserID,
+		Token:     gs.Token,
+		ExpiresAt: gs.ExpiresAt,
+		CreatedAt: gs.CreatedAt,
+		UpdatedAt: gs.UpdatedAt,
+		UserAgent: gs.UserAgent,
+		IPAddress: gs.IPAddress,
+	}
 }

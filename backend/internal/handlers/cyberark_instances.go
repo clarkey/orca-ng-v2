@@ -2,32 +2,38 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
+	"gorm.io/gorm"
 
 	"github.com/orca-ng/orca/internal/crypto"
 	"github.com/orca-ng/orca/internal/cyberark"
 	"github.com/orca-ng/orca/internal/database"
 	"github.com/orca-ng/orca/internal/middleware"
 	"github.com/orca-ng/orca/internal/models"
+	gormmodels "github.com/orca-ng/orca/internal/models/gorm"
+	"github.com/orca-ng/orca/internal/services"
 )
 
-// CyberArkInstancesHandler handles CyberArk instance-related API endpoints
+// CyberArkInstancesHandlerGorm handles CyberArk instance-related API endpoints
 type CyberArkInstancesHandler struct {
-	db        *database.DB
+	db        *database.GormDB
 	logger    *logrus.Logger
 	encryptor *crypto.Encryptor
+	certManager *services.CertificateManager
 }
 
-// NewCyberArkInstancesHandler creates a new CyberArk instances handler
-func NewCyberArkInstancesHandler(db *database.DB, logger *logrus.Logger, encryptionKey string) *CyberArkInstancesHandler {
+// NewCyberArkInstancesHandlerGorm creates a new CyberArk instances handler
+func NewCyberArkInstancesHandler(db *database.GormDB, logger *logrus.Logger, encryptionKey string, certManager *services.CertificateManager) *CyberArkInstancesHandler {
 	return &CyberArkInstancesHandler{
 		db:        db,
 		logger:    logger,
 		encryptor: crypto.NewEncryptor(encryptionKey),
+		certManager: certManager,
 	}
 }
 
@@ -36,16 +42,41 @@ func (h *CyberArkInstancesHandler) ListInstances(c *gin.Context) {
 	// Check if user wants only active instances
 	onlyActive := c.Query("active") == "true"
 
-	instances, err := h.db.GetCyberArkInstances(c.Request.Context(), onlyActive)
-	if err != nil {
+	query := h.db.Model(&gormmodels.CyberArkInstance{})
+	if onlyActive {
+		query = query.Where("is_active = ?", true)
+	}
+
+	var instances []gormmodels.CyberArkInstance
+	if err := query.Order("name ASC").Find(&instances).Error; err != nil {
 		h.logger.WithError(err).Error("Failed to get CyberArk instances")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve instances"})
 		return
 	}
 
+	// Convert to response format (decrypt passwords)
+	var response []models.CyberArkInstanceInfo
+	for _, inst := range instances {
+		info := models.CyberArkInstanceInfo{
+			ID:                 inst.ID,
+			Name:               inst.Name,
+			BaseURL:            inst.BaseURL,
+			Username:           inst.Username,
+			ConcurrentSessions: inst.ConcurrentSessions,
+			SkipTLSVerify:      inst.SkipTLSVerify,
+			IsActive:           inst.IsActive,
+			LastTestAt:         inst.LastTestAt,
+			LastTestSuccess:    inst.LastTestSuccess,
+			LastTestError:      inst.LastTestError,
+			CreatedAt:          inst.CreatedAt,
+			UpdatedAt:          inst.UpdatedAt,
+		}
+		response = append(response, info)
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"instances": instances,
-		"count":     len(instances),
+		"instances": response,
+		"count":     len(response),
 	})
 }
 
@@ -53,9 +84,9 @@ func (h *CyberArkInstancesHandler) ListInstances(c *gin.Context) {
 func (h *CyberArkInstancesHandler) GetInstance(c *gin.Context) {
 	id := c.Param("id")
 
-	instance, err := h.db.GetCyberArkInstance(c.Request.Context(), id)
-	if err != nil {
-		if err.Error() == "instance not found" {
+	var instance gormmodels.CyberArkInstance
+	if err := h.db.First(&instance, "id = ?", id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Instance not found"})
 			return
 		}
@@ -64,7 +95,23 @@ func (h *CyberArkInstancesHandler) GetInstance(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, instance)
+	// Convert to response format
+	response := models.CyberArkInstanceInfo{
+		ID:                 instance.ID,
+		Name:               instance.Name,
+		BaseURL:            instance.BaseURL,
+		Username:           instance.Username,
+		ConcurrentSessions: instance.ConcurrentSessions,
+		SkipTLSVerify:      instance.SkipTLSVerify,
+		IsActive:           instance.IsActive,
+		LastTestAt:         instance.LastTestAt,
+		LastTestSuccess:    instance.LastTestSuccess,
+		LastTestError:      instance.LastTestError,
+		CreatedAt:          instance.CreatedAt,
+		UpdatedAt:          instance.UpdatedAt,
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
 // CreateInstance creates a new CyberArk instance
@@ -82,13 +129,13 @@ func (h *CyberArkInstancesHandler) CreateInstance(c *gin.Context) {
 	}
 
 	// Check if name already exists
-	exists, err := h.db.CheckCyberArkInstanceNameExists(c.Request.Context(), req.Name, "")
-	if err != nil {
+	var count int64
+	if err := h.db.Model(&gormmodels.CyberArkInstance{}).Where("name = ?", req.Name).Count(&count).Error; err != nil {
 		h.logger.WithError(err).Error("Failed to check instance name")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate instance name"})
 		return
 	}
-	if exists {
+	if count > 0 {
 		c.JSON(http.StatusConflict, gin.H{"error": "Instance name already exists"})
 		return
 	}
@@ -97,7 +144,15 @@ func (h *CyberArkInstancesHandler) CreateInstance(c *gin.Context) {
 	testCtx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
 	defer cancel()
 
-	client := cyberark.NewClient(req.BaseURL, req.Username, req.Password)
+	skipTLS := false
+	if req.SkipTLSVerify != nil {
+		skipTLS = *req.SkipTLSVerify
+	}
+	// Create client with certificate manager
+	clientFactory := func() (*http.Client, error) {
+		return h.certManager.GetHTTPClient(testCtx, skipTLS, 30*time.Second)
+	}
+	client := cyberark.NewClientWithHTTPClientFactory(req.BaseURL, req.Username, req.Password, clientFactory)
 	success, message, err := client.TestConnection(testCtx)
 	if err != nil {
 		h.logger.WithError(err).Error("Failed to test CyberArk connection")
@@ -120,28 +175,39 @@ func (h *CyberArkInstancesHandler) CreateInstance(c *gin.Context) {
 
 	// Create the instance
 	user := middleware.GetUser(c)
-	instance := &models.CyberArkInstance{
+	instance := &gormmodels.CyberArkInstance{
 		Name:              req.Name,
 		BaseURL:           req.BaseURL,
 		Username:          req.Username,
 		PasswordEncrypted: encryptedPassword,
 		ConcurrentSessions: true, // Default to true if not specified
+		SkipTLSVerify:     false, // Default to false if not specified
 		IsActive:          true,
 	}
 	
-	// Override with request value if provided
+	// Override with request values if provided
 	if req.ConcurrentSessions != nil {
 		instance.ConcurrentSessions = *req.ConcurrentSessions
 	}
+	if req.SkipTLSVerify != nil {
+		instance.SkipTLSVerify = *req.SkipTLSVerify
+	}
 
-	if err := h.db.CreateCyberArkInstance(c.Request.Context(), instance, user.ID); err != nil {
+	// Create with user context
+	ctx := context.WithValue(c.Request.Context(), "user_id", user.ID)
+	if err := h.db.WithContext(ctx).Create(instance).Error; err != nil {
 		h.logger.WithError(err).Error("Failed to create CyberArk instance")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create instance"})
 		return
 	}
 
 	// Update test result
-	h.db.UpdateCyberArkInstanceTestResult(c.Request.Context(), instance.ID, true, "")
+	testSuccess := true
+	h.db.Model(instance).Updates(map[string]interface{}{
+		"last_test_at":      time.Now(),
+		"last_test_success": &testSuccess,
+		"last_test_error":   nil,
+	})
 
 	h.logger.WithFields(logrus.Fields{
 		"instance_id": instance.ID,
@@ -149,7 +215,23 @@ func (h *CyberArkInstancesHandler) CreateInstance(c *gin.Context) {
 		"user_id":     user.ID,
 	}).Info("CyberArk instance created")
 
-	c.JSON(http.StatusCreated, instance)
+	// Convert to response format
+	response := models.CyberArkInstanceInfo{
+		ID:                 instance.ID,
+		Name:               instance.Name,
+		BaseURL:            instance.BaseURL,
+		Username:           instance.Username,
+		ConcurrentSessions: instance.ConcurrentSessions,
+		SkipTLSVerify:      instance.SkipTLSVerify,
+		IsActive:           instance.IsActive,
+		LastTestAt:         instance.LastTestAt,
+		LastTestSuccess:    instance.LastTestSuccess,
+		LastTestError:      instance.LastTestError,
+		CreatedAt:          instance.CreatedAt,
+		UpdatedAt:          instance.UpdatedAt,
+	}
+
+	c.JSON(http.StatusCreated, response)
 }
 
 // UpdateInstance updates an existing CyberArk instance
@@ -163,9 +245,9 @@ func (h *CyberArkInstancesHandler) UpdateInstance(c *gin.Context) {
 	}
 
 	// Get the existing instance
-	existing, err := h.db.GetCyberArkInstance(c.Request.Context(), id)
-	if err != nil {
-		if err.Error() == "instance not found" {
+	var existing gormmodels.CyberArkInstance
+	if err := h.db.First(&existing, "id = ?", id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Instance not found"})
 			return
 		}
@@ -183,13 +265,15 @@ func (h *CyberArkInstancesHandler) UpdateInstance(c *gin.Context) {
 
 	if req.Name != "" && req.Name != existing.Name {
 		// Check if new name already exists
-		exists, err := h.db.CheckCyberArkInstanceNameExists(c.Request.Context(), req.Name, id)
-		if err != nil {
+		var count int64
+		if err := h.db.Model(&gormmodels.CyberArkInstance{}).
+			Where("name = ? AND id != ?", req.Name, id).
+			Count(&count).Error; err != nil {
 			h.logger.WithError(err).Error("Failed to check instance name")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate instance name"})
 			return
 		}
-		if exists {
+		if count > 0 {
 			c.JSON(http.StatusConflict, gin.H{"error": "Instance name already exists"})
 			return
 		}
@@ -229,6 +313,10 @@ func (h *CyberArkInstancesHandler) UpdateInstance(c *gin.Context) {
 		updates["concurrent_sessions"] = *req.ConcurrentSessions
 	}
 	
+	if req.SkipTLSVerify != nil {
+		updates["skip_tls_verify"] = *req.SkipTLSVerify
+	}
+	
 	if req.IsActive != nil {
 		updates["is_active"] = *req.IsActive
 	}
@@ -250,7 +338,16 @@ func (h *CyberArkInstancesHandler) UpdateInstance(c *gin.Context) {
 		testCtx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
 		defer cancel()
 
-		client := cyberark.NewClient(newBaseURL, newUsername, testPassword)
+		// Use existing skip_tls_verify setting if not being updated
+		skipTLS := existing.SkipTLSVerify
+		if req.SkipTLSVerify != nil {
+			skipTLS = *req.SkipTLSVerify
+		}
+		// Create client with certificate manager
+		clientFactory := func() (*http.Client, error) {
+			return h.certManager.GetHTTPClient(testCtx, skipTLS, 30*time.Second)
+		}
+		client := cyberark.NewClientWithHTTPClientFactory(newBaseURL, newUsername, testPassword, clientFactory)
 		success, message, err := client.TestConnection(testCtx)
 		if err != nil {
 			h.logger.WithError(err).Error("Failed to test CyberArk connection")
@@ -266,7 +363,9 @@ func (h *CyberArkInstancesHandler) UpdateInstance(c *gin.Context) {
 
 	// Update the instance
 	user := middleware.GetUser(c)
-	if err := h.db.UpdateCyberArkInstance(c.Request.Context(), id, updates, user.ID); err != nil {
+	ctx := context.WithValue(c.Request.Context(), "user_id", user.ID)
+	
+	if err := h.db.WithContext(ctx).Model(&existing).Updates(updates).Error; err != nil {
 		h.logger.WithError(err).Error("Failed to update CyberArk instance")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update instance"})
 		return
@@ -274,7 +373,12 @@ func (h *CyberArkInstancesHandler) UpdateInstance(c *gin.Context) {
 
 	// Update test result if connection was tested
 	if testConnection {
-		h.db.UpdateCyberArkInstanceTestResult(c.Request.Context(), id, true, "")
+		testSuccess := true
+		h.db.Model(&existing).Updates(map[string]interface{}{
+			"last_test_at":      time.Now(),
+			"last_test_success": &testSuccess,
+			"last_test_error":   nil,
+		})
 	}
 
 	h.logger.WithFields(logrus.Fields{
@@ -291,9 +395,9 @@ func (h *CyberArkInstancesHandler) DeleteInstance(c *gin.Context) {
 	id := c.Param("id")
 
 	// Check if instance exists
-	_, err := h.db.GetCyberArkInstance(c.Request.Context(), id)
-	if err != nil {
-		if err.Error() == "instance not found" {
+	var instance gormmodels.CyberArkInstance
+	if err := h.db.First(&instance, "id = ?", id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Instance not found"})
 			return
 		}
@@ -303,7 +407,7 @@ func (h *CyberArkInstancesHandler) DeleteInstance(c *gin.Context) {
 	}
 
 	// Delete the instance
-	if err := h.db.DeleteCyberArkInstance(c.Request.Context(), id); err != nil {
+	if err := h.db.Delete(&instance).Error; err != nil {
 		h.logger.WithError(err).Error("Failed to delete CyberArk instance")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete instance"})
 		return
@@ -320,41 +424,45 @@ func (h *CyberArkInstancesHandler) DeleteInstance(c *gin.Context) {
 
 // TestConnection tests a CyberArk connection
 func (h *CyberArkInstancesHandler) TestConnection(c *gin.Context) {
-	var req models.TestConnectionRequest
+	var req models.TestCyberArkConnectionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Validate URL format
+	// Validate URL
 	if err := cyberark.ValidateURL(req.BaseURL); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Test the connection
 	testCtx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
 	defer cancel()
 
-	startTime := time.Now()
-	client := cyberark.NewClient(req.BaseURL, req.Username, req.Password)
-	success, message, err := client.TestConnection(testCtx)
-	responseTime := time.Since(startTime).Milliseconds()
+	skipTLS := false
+	if req.SkipTLSVerify != nil {
+		skipTLS = *req.SkipTLSVerify
+	}
 
+	// Create client with certificate manager
+	clientFactory := func() (*http.Client, error) {
+		return h.certManager.GetHTTPClient(testCtx, skipTLS, 30*time.Second)
+	}
+	client := cyberark.NewClientWithHTTPClientFactory(req.BaseURL, req.Username, req.Password, clientFactory)
+	
+	success, message, err := client.TestConnection(testCtx)
 	if err != nil {
-		h.logger.WithError(err).Error("Failed to test CyberArk connection")
-		c.JSON(http.StatusOK, models.TestConnectionResponse{
-			Success:      false,
-			Message:      "Connection test failed: " + err.Error(),
-			ResponseTime: responseTime,
+		h.logger.WithError(err).Debug("Connection test failed")
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": err.Error(),
 		})
 		return
 	}
 
-	c.JSON(http.StatusOK, models.TestConnectionResponse{
-		Success:      success,
-		Message:      message,
-		ResponseTime: responseTime,
+	c.JSON(http.StatusOK, gin.H{
+		"success": success,
+		"message": message,
 	})
 }
 
@@ -363,9 +471,9 @@ func (h *CyberArkInstancesHandler) TestInstanceConnection(c *gin.Context) {
 	id := c.Param("id")
 
 	// Get the instance
-	instance, err := h.db.GetCyberArkInstance(c.Request.Context(), id)
-	if err != nil {
-		if err.Error() == "instance not found" {
+	var instance gormmodels.CyberArkInstance
+	if err := h.db.First(&instance, "id = ?", id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Instance not found"})
 			return
 		}
@@ -374,7 +482,7 @@ func (h *CyberArkInstancesHandler) TestInstanceConnection(c *gin.Context) {
 		return
 	}
 
-	// Decrypt the password
+	// Decrypt password
 	password, err := h.encryptor.Decrypt(instance.PasswordEncrypted)
 	if err != nil {
 		h.logger.WithError(err).Error("Failed to decrypt password")
@@ -382,37 +490,52 @@ func (h *CyberArkInstancesHandler) TestInstanceConnection(c *gin.Context) {
 		return
 	}
 
-	// Test the connection
 	testCtx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
 	defer cancel()
 
-	startTime := time.Now()
-	client := cyberark.NewClient(instance.BaseURL, instance.Username, password)
+	// Create client with certificate manager
+	clientFactory := func() (*http.Client, error) {
+		return h.certManager.GetHTTPClient(testCtx, instance.SkipTLSVerify, 30*time.Second)
+	}
+	client := cyberark.NewClientWithHTTPClientFactory(instance.BaseURL, instance.Username, password, clientFactory)
+	
 	success, message, err := client.TestConnection(testCtx)
-	responseTime := time.Since(startTime).Milliseconds()
+	testResult := map[string]interface{}{
+		"last_test_at": time.Now(),
+	}
+	
+	if err != nil {
+		h.logger.WithError(err).Debug("Instance connection test failed")
+		testSuccess := false
+		errMsg := err.Error()
+		testResult["last_test_success"] = &testSuccess
+		testResult["last_test_error"] = &errMsg
+	} else {
+		testResult["last_test_success"] = &success
+		if !success {
+			testResult["last_test_error"] = &message
+		} else {
+			testResult["last_test_error"] = nil
+		}
+	}
 
 	// Update test result
-	var errorMsg string
-	if err != nil {
-		errorMsg = err.Error()
-	} else if !success {
-		errorMsg = message
-	}
-	h.db.UpdateCyberArkInstanceTestResult(c.Request.Context(), id, success, errorMsg)
+	h.db.Model(&instance).Updates(testResult)
 
-	if err != nil {
-		h.logger.WithError(err).Error("Failed to test CyberArk connection")
-		c.JSON(http.StatusOK, models.TestConnectionResponse{
-			Success:      false,
-			Message:      "Connection test failed: " + err.Error(),
-			ResponseTime: responseTime,
+	if err != nil || !success {
+		responseMsg := message
+		if err != nil {
+			responseMsg = err.Error()
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": responseMsg,
 		})
 		return
 	}
 
-	c.JSON(http.StatusOK, models.TestConnectionResponse{
-		Success:      success,
-		Message:      message,
-		ResponseTime: responseTime,
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": message,
 	})
 }

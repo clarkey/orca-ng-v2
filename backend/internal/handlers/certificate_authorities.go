@@ -1,28 +1,30 @@
 package handlers
 
 import (
-	"database/sql"
-	"fmt"
+	"context"
+	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
+	"gorm.io/gorm"
 	
 	"github.com/orca-ng/orca/internal/database"
 	"github.com/orca-ng/orca/internal/models"
+	gormmodels "github.com/orca-ng/orca/internal/models/gorm"
 	"github.com/orca-ng/orca/internal/services"
-	"github.com/orca-ng/orca/pkg/ulid"
 )
 
 type CertificateAuthoritiesHandler struct {
-	db          *database.DB
+	db          *database.GormDB
 	logger      *logrus.Logger
 	certService *services.CertificateService
 	certManager *services.CertificateManager
 }
 
-func NewCertificateAuthoritiesHandler(db *database.DB, logger *logrus.Logger, certManager *services.CertificateManager) *CertificateAuthoritiesHandler {
+func NewCertificateAuthoritiesHandler(db *database.GormDB, logger *logrus.Logger, certManager *services.CertificateManager) *CertificateAuthoritiesHandler {
 	return &CertificateAuthoritiesHandler{
 		db:          db,
 		logger:      logger,
@@ -32,74 +34,79 @@ func NewCertificateAuthoritiesHandler(db *database.DB, logger *logrus.Logger, ce
 }
 
 func (h *CertificateAuthoritiesHandler) List(c *gin.Context) {
-	query := `
-		SELECT id, name, description, certificate, fingerprint, subject, issuer,
-		       not_before, not_after, is_active, created_at, updated_at, created_by, updated_by
-		FROM certificate_authorities
-		ORDER BY name ASC
-	`
+	var authorities []gormmodels.CertificateAuthority
 	
-	rows, err := h.db.Pool().Query(c.Request.Context(), query)
-	if err != nil {
+	if err := h.db.Order("name ASC").Find(&authorities).Error; err != nil {
 		h.logger.WithError(err).Error("Failed to fetch certificate authorities")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch certificate authorities"})
 		return
 	}
-	defer rows.Close()
 	
-	var authorities []models.CertificateAuthority
-	for rows.Next() {
-		var ca models.CertificateAuthority
-		err := rows.Scan(
-			&ca.ID, &ca.Name, &ca.Description, &ca.Certificate, &ca.Fingerprint,
-			&ca.Subject, &ca.Issuer, &ca.NotBefore, &ca.NotAfter, &ca.IsActive,
-			&ca.CreatedAt, &ca.UpdatedAt, &ca.CreatedBy, &ca.UpdatedBy,
-		)
-		if err != nil {
-			h.logger.WithError(err).Error("Failed to scan certificate authority")
-			continue
-		}
-		authorities = append(authorities, ca)
+	// Convert to response format
+	var response []models.CertificateAuthority
+	for _, ca := range authorities {
+		response = append(response, models.CertificateAuthority{
+			ID:               ca.ID,
+			Name:             ca.Name,
+			Description:      ca.Description,
+			Certificate:      ca.Certificate,
+			CertificateCount: ca.CertificateCount,
+			Fingerprint:      ca.Fingerprint,
+			Subject:          ca.Subject,
+			Issuer:           ca.Issuer,
+			IsRootCA:         ca.IsRootCA,
+			IsIntermediate:   ca.IsIntermediate,
+			ChainInfo:        ca.ChainInfo,
+			NotBefore:        ca.NotBefore,
+			NotAfter:         ca.NotAfter,
+			IsActive:         ca.IsActive,
+			CreatedAt:        ca.CreatedAt,
+			UpdatedAt:        ca.UpdatedAt,
+			CreatedBy:        ca.CreatedBy,
+			UpdatedBy:        ca.UpdatedBy,
+		})
 	}
 	
-	// Convert to info objects (without the actual certificate data)
-	infos := make([]*models.CertificateAuthorityInfo, len(authorities))
-	for i, ca := range authorities {
-		infos[i] = ca.ToInfo()
-	}
-	
-	c.JSON(http.StatusOK, gin.H{"certificate_authorities": infos})
+	c.JSON(http.StatusOK, response)
 }
 
 func (h *CertificateAuthoritiesHandler) Get(c *gin.Context) {
 	id := c.Param("id")
 	
-	query := `
-		SELECT id, name, description, certificate, fingerprint, subject, issuer,
-		       not_before, not_after, is_active, created_at, updated_at, created_by, updated_by
-		FROM certificate_authorities
-		WHERE id = $1
-	`
-	
-	var ca models.CertificateAuthority
-	err := h.db.Pool().QueryRow(c.Request.Context(), query, id).Scan(
-		&ca.ID, &ca.Name, &ca.Description, &ca.Certificate, &ca.Fingerprint,
-		&ca.Subject, &ca.Issuer, &ca.NotBefore, &ca.NotAfter, &ca.IsActive,
-		&ca.CreatedAt, &ca.UpdatedAt, &ca.CreatedBy, &ca.UpdatedBy,
-	)
-	
-	if err == sql.ErrNoRows {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Certificate authority not found"})
+	var ca gormmodels.CertificateAuthority
+	if err := h.db.First(&ca, "id = ?", id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Certificate authority not found"})
+			return
+		}
+		h.logger.WithError(err).Error("Failed to get certificate authority")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get certificate authority"})
 		return
 	}
 	
-	if err != nil {
-		h.logger.WithError(err).Error("Failed to fetch certificate authority")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch certificate authority"})
-		return
+	// Convert to response format
+	response := models.CertificateAuthority{
+		ID:               ca.ID,
+		Name:             ca.Name,
+		Description:      ca.Description,
+		Certificate:      ca.Certificate,
+		CertificateCount: ca.CertificateCount,
+		Fingerprint:      ca.Fingerprint,
+		Subject:          ca.Subject,
+		Issuer:           ca.Issuer,
+		IsRootCA:         ca.IsRootCA,
+		IsIntermediate:   ca.IsIntermediate,
+		ChainInfo:        ca.ChainInfo,
+		NotBefore:        ca.NotBefore,
+		NotAfter:         ca.NotAfter,
+		IsActive:         ca.IsActive,
+		CreatedAt:        ca.CreatedAt,
+		UpdatedAt:        ca.UpdatedAt,
+		CreatedBy:        ca.CreatedBy,
+		UpdatedBy:        ca.UpdatedBy,
 	}
 	
-	c.JSON(http.StatusOK, ca)
+	c.JSON(http.StatusOK, response)
 }
 
 func (h *CertificateAuthoritiesHandler) Create(c *gin.Context) {
@@ -109,15 +116,15 @@ func (h *CertificateAuthoritiesHandler) Create(c *gin.Context) {
 		return
 	}
 	
-	// Parse and validate the certificate
-	parsed, err := h.certService.ParseCertificate(req.Certificate)
+	// Parse and validate the certificate chain
+	chainParsed, err := h.certService.ParseCertificateChain(req.Certificate)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid certificate: " + err.Error()})
 		return
 	}
 	
-	// Validate it's a CA certificate
-	if err := h.certService.ValidateCertificate(req.Certificate); err != nil {
+	// Validate the certificate chain
+	if err := h.certService.ValidateCertificateChain(req.Certificate); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -133,41 +140,48 @@ func (h *CertificateAuthoritiesHandler) Create(c *gin.Context) {
 		isActive = *req.IsActive
 	}
 	
-	ca := models.CertificateAuthority{
-		ID:          ulid.New(ulid.CAPrefix),
-		Name:        strings.TrimSpace(req.Name),
-		Description: strings.TrimSpace(req.Description),
-		Certificate: parsed.PEMData,
-		Fingerprint: parsed.Fingerprint,
-		Subject:     parsed.Subject,
-		Issuer:      parsed.Issuer,
-		NotBefore:   parsed.NotBefore,
-		NotAfter:    parsed.NotAfter,
-		IsActive:    isActive,
-		CreatedBy:   userID,
-		UpdatedBy:   userID,
+	// Build chain info JSON
+	var chainInfo []models.CertificateChainInfo
+	for _, cert := range chainParsed.Certificates {
+		chainInfo = append(chainInfo, models.CertificateChainInfo{
+			Subject:      cert.Subject,
+			Issuer:       cert.Issuer,
+			Fingerprint:  cert.Fingerprint,
+			NotBefore:    cert.NotBefore,
+			NotAfter:     cert.NotAfter,
+			IsCA:         cert.IsCA,
+			IsSelfSigned: cert.IsSelfSigned,
+		})
 	}
 	
-	query := `
-		INSERT INTO certificate_authorities (
-			id, name, description, certificate, fingerprint, subject, issuer,
-			not_before, not_after, is_active, created_by, updated_by
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-		RETURNING created_at, updated_at
-	`
+	chainInfoJSON, _ := json.Marshal(chainInfo)
 	
-	err = h.db.Pool().QueryRow(
-		c.Request.Context(), query,
-		ca.ID, ca.Name, ca.Description, ca.Certificate, ca.Fingerprint,
-		ca.Subject, ca.Issuer, ca.NotBefore, ca.NotAfter, ca.IsActive,
-		ca.CreatedBy, ca.UpdatedBy,
-	).Scan(&ca.CreatedAt, &ca.UpdatedAt)
+	// The primary certificate is the first one in the chain
+	primaryCert := chainParsed.PrimaryCert
 	
-	if err != nil {
-		if strings.Contains(err.Error(), "duplicate key value violates unique constraint") {
-			if strings.Contains(err.Error(), "certificate_authorities_name_unique") {
+	ca := gormmodels.CertificateAuthority{
+		Name:             strings.TrimSpace(req.Name),
+		Description:      strings.TrimSpace(req.Description),
+		Certificate:      req.Certificate, // Store the full chain
+		CertificateCount: len(chainParsed.Certificates),
+		Fingerprint:      primaryCert.Fingerprint,
+		Subject:          primaryCert.Subject,
+		Issuer:           primaryCert.Issuer,
+		IsRootCA:         primaryCert.IsSelfSigned && primaryCert.IsCA,
+		IsIntermediate:   !primaryCert.IsSelfSigned && primaryCert.IsCA,
+		ChainInfo:        string(chainInfoJSON),
+		NotBefore:        primaryCert.NotBefore,
+		NotAfter:         primaryCert.NotAfter,
+		IsActive:         isActive,
+	}
+	
+	// Create with user context
+	ctx := context.WithValue(c.Request.Context(), "user_id", userID)
+	if err := h.db.WithContext(ctx).Create(&ca).Error; err != nil {
+		if strings.Contains(err.Error(), "duplicate key value") || strings.Contains(err.Error(), "UNIQUE constraint") {
+			if strings.Contains(err.Error(), "name") {
 				c.JSON(http.StatusConflict, gin.H{"error": "A certificate authority with this name already exists"})
-			} else if strings.Contains(err.Error(), "certificate_authorities_fingerprint_unique") {
+			} else if strings.Contains(err.Error(), "fingerprint") {
 				c.JSON(http.StatusConflict, gin.H{"error": "This certificate is already registered"})
 			} else {
 				c.JSON(http.StatusConflict, gin.H{"error": "Certificate authority already exists"})
@@ -192,7 +206,29 @@ func (h *CertificateAuthoritiesHandler) Create(c *gin.Context) {
 		// Don't fail the request, the certificate was created successfully
 	}
 	
-	c.JSON(http.StatusCreated, ca)
+	// Convert to response format
+	response := models.CertificateAuthority{
+		ID:               ca.ID,
+		Name:             ca.Name,
+		Description:      ca.Description,
+		Certificate:      ca.Certificate,
+		CertificateCount: ca.CertificateCount,
+		Fingerprint:      ca.Fingerprint,
+		Subject:          ca.Subject,
+		Issuer:           ca.Issuer,
+		IsRootCA:         ca.IsRootCA,
+		IsIntermediate:   ca.IsIntermediate,
+		ChainInfo:        ca.ChainInfo,
+		NotBefore:        ca.NotBefore,
+		NotAfter:         ca.NotAfter,
+		IsActive:         ca.IsActive,
+		CreatedAt:        ca.CreatedAt,
+		UpdatedAt:        ca.UpdatedAt,
+		CreatedBy:        ca.CreatedBy,
+		UpdatedBy:        ca.UpdatedBy,
+	}
+	
+	c.JSON(http.StatusCreated, response)
 }
 
 func (h *CertificateAuthoritiesHandler) Update(c *gin.Context) {
@@ -209,27 +245,19 @@ func (h *CertificateAuthoritiesHandler) Update(c *gin.Context) {
 	user := userInterface.(*models.User)
 	userID := user.ID
 	
-	// Build dynamic update query
-	var updates []string
-	var args []interface{}
-	argCount := 1
+	// Build update map
+	updates := make(map[string]interface{})
 	
 	if req.Name != "" {
-		updates = append(updates, fmt.Sprintf("name = $%d", argCount))
-		args = append(args, strings.TrimSpace(req.Name))
-		argCount++
+		updates["name"] = strings.TrimSpace(req.Name)
 	}
 	
 	if req.Description != "" {
-		updates = append(updates, fmt.Sprintf("description = $%d", argCount))
-		args = append(args, strings.TrimSpace(req.Description))
-		argCount++
+		updates["description"] = strings.TrimSpace(req.Description)
 	}
 	
 	if req.IsActive != nil {
-		updates = append(updates, fmt.Sprintf("is_active = $%d", argCount))
-		args = append(args, *req.IsActive)
-		argCount++
+		updates["is_active"] = *req.IsActive
 	}
 	
 	if len(updates) == 0 {
@@ -237,41 +265,31 @@ func (h *CertificateAuthoritiesHandler) Update(c *gin.Context) {
 		return
 	}
 	
-	// Add updated_by
-	updates = append(updates, fmt.Sprintf("updated_by = $%d", argCount))
-	args = append(args, userID)
-	argCount++
+	// Update with user context
+	ctx := context.WithValue(c.Request.Context(), "user_id", userID)
 	
-	// Add WHERE clause
-	args = append(args, id)
+	var ca gormmodels.CertificateAuthority
+	result := h.db.WithContext(ctx).Model(&ca).Where("id = ?", id).Updates(updates)
 	
-	query := fmt.Sprintf(`
-		UPDATE certificate_authorities
-		SET %s
-		WHERE id = $%d
-		RETURNING id, name, description, certificate, fingerprint, subject, issuer,
-		          not_before, not_after, is_active, created_at, updated_at, created_by, updated_by
-	`, strings.Join(updates, ", "), argCount)
+	if result.Error != nil {
+		if strings.Contains(result.Error.Error(), "duplicate key value") || strings.Contains(result.Error.Error(), "UNIQUE constraint") {
+			c.JSON(http.StatusConflict, gin.H{"error": "A certificate authority with this name already exists"})
+			return
+		}
+		h.logger.WithError(result.Error).Error("Failed to update certificate authority")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update certificate authority"})
+		return
+	}
 	
-	var ca models.CertificateAuthority
-	err := h.db.Pool().QueryRow(c.Request.Context(), query, args...).Scan(
-		&ca.ID, &ca.Name, &ca.Description, &ca.Certificate, &ca.Fingerprint,
-		&ca.Subject, &ca.Issuer, &ca.NotBefore, &ca.NotAfter, &ca.IsActive,
-		&ca.CreatedAt, &ca.UpdatedAt, &ca.CreatedBy, &ca.UpdatedBy,
-	)
-	
-	if err == sql.ErrNoRows {
+	if result.RowsAffected == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Certificate authority not found"})
 		return
 	}
 	
-	if err != nil {
-		if strings.Contains(err.Error(), "duplicate key value violates unique constraint") {
-			c.JSON(http.StatusConflict, gin.H{"error": "A certificate authority with this name already exists"})
-			return
-		}
-		h.logger.WithError(err).Error("Failed to update certificate authority")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update certificate authority"})
+	// Fetch the updated record
+	if err := h.db.First(&ca, "id = ?", id).Error; err != nil {
+		h.logger.WithError(err).Error("Failed to fetch updated certificate authority")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch updated certificate authority"})
 		return
 	}
 	
@@ -288,22 +306,42 @@ func (h *CertificateAuthoritiesHandler) Update(c *gin.Context) {
 		}
 	}
 	
-	c.JSON(http.StatusOK, ca)
+	// Convert to response format
+	response := models.CertificateAuthority{
+		ID:               ca.ID,
+		Name:             ca.Name,
+		Description:      ca.Description,
+		Certificate:      ca.Certificate,
+		CertificateCount: ca.CertificateCount,
+		Fingerprint:      ca.Fingerprint,
+		Subject:          ca.Subject,
+		Issuer:           ca.Issuer,
+		IsRootCA:         ca.IsRootCA,
+		IsIntermediate:   ca.IsIntermediate,
+		ChainInfo:        ca.ChainInfo,
+		NotBefore:        ca.NotBefore,
+		NotAfter:         ca.NotAfter,
+		IsActive:         ca.IsActive,
+		CreatedAt:        ca.CreatedAt,
+		UpdatedAt:        ca.UpdatedAt,
+		CreatedBy:        ca.CreatedBy,
+		UpdatedBy:        ca.UpdatedBy,
+	}
+	
+	c.JSON(http.StatusOK, response)
 }
 
 func (h *CertificateAuthoritiesHandler) Delete(c *gin.Context) {
 	id := c.Param("id")
 	
-	query := `DELETE FROM certificate_authorities WHERE id = $1`
-	
-	result, err := h.db.Pool().Exec(c.Request.Context(), query, id)
-	if err != nil {
-		h.logger.WithError(err).Error("Failed to delete certificate authority")
+	result := h.db.Delete(&gormmodels.CertificateAuthority{}, "id = ?", id)
+	if result.Error != nil {
+		h.logger.WithError(result.Error).Error("Failed to delete certificate authority")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete certificate authority"})
 		return
 	}
 	
-	if result.RowsAffected() == 0 {
+	if result.RowsAffected == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Certificate authority not found"})
 		return
 	}

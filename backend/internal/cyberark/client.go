@@ -3,6 +3,7 @@ package cyberark
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -11,13 +12,18 @@ import (
 	"time"
 )
 
+// HTTPClientFactory is a function that creates an HTTP client
+type HTTPClientFactory func() (*http.Client, error)
+
 // Client represents a CyberArk API client
 type Client struct {
-	baseURL    string
-	username   string
-	password   string
-	httpClient *http.Client
-	token      string
+	baseURL           string
+	username          string
+	password          string
+	httpClient        *http.Client
+	httpClientFactory HTTPClientFactory
+	token             string
+	skipTLSVerify     bool
 }
 
 // NewClient creates a new CyberArk client
@@ -32,6 +38,47 @@ func NewClient(baseURL, username, password string) *Client {
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
+		skipTLSVerify: false,
+	}
+}
+
+// NewClientWithTLSConfig creates a new CyberArk client with custom TLS configuration
+func NewClientWithTLSConfig(baseURL, username, password string, skipTLSVerify bool) *Client {
+	// Ensure baseURL ends without trailing slash
+	baseURL = strings.TrimRight(baseURL, "/")
+	
+	// Create HTTP client with custom TLS config if needed
+	httpClient := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+	
+	if skipTLSVerify {
+		httpClient.Transport = &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
+		}
+	}
+	
+	return &Client{
+		baseURL:       baseURL,
+		username:      username,
+		password:      password,
+		httpClient:    httpClient,
+		skipTLSVerify: skipTLSVerify,
+	}
+}
+
+// NewClientWithHTTPClientFactory creates a new CyberArk client with a custom HTTP client factory
+func NewClientWithHTTPClientFactory(baseURL, username, password string, factory HTTPClientFactory) *Client {
+	// Ensure baseURL ends without trailing slash
+	baseURL = strings.TrimRight(baseURL, "/")
+	
+	return &Client{
+		baseURL:           baseURL,
+		username:          username,
+		password:          password,
+		httpClientFactory: factory,
 	}
 }
 
@@ -40,7 +87,8 @@ func (c *Client) TestConnection(ctx context.Context) (bool, string, error) {
 	startTime := time.Now()
 	
 	// Prepare the authentication request
-	authURL := fmt.Sprintf("%s/PasswordVault/API/auth/Cyberark/Logon", c.baseURL)
+	// Note: baseURL should already include the full path (e.g., https://server/PasswordVault)
+	authURL := fmt.Sprintf("%s/API/auth/Cyberark/Logon", c.baseURL)
 	
 	payload := map[string]string{
 		"username": c.username,
@@ -59,7 +107,17 @@ func (c *Client) TestConnection(ctx context.Context) (bool, string, error) {
 	
 	req.Header.Set("Content-Type", "application/json")
 	
-	resp, err := c.httpClient.Do(req)
+	// Get HTTP client (use factory if available)
+	httpClient := c.httpClient
+	if c.httpClientFactory != nil {
+		client, err := c.httpClientFactory()
+		if err != nil {
+			return false, "", fmt.Errorf("failed to create HTTP client: %w", err)
+		}
+		httpClient = client
+	}
+	
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return false, "", fmt.Errorf("failed to connect to CyberArk: %w", err)
 	}
@@ -103,7 +161,7 @@ func (c *Client) Logoff(ctx context.Context) error {
 		return nil
 	}
 	
-	logoffURL := fmt.Sprintf("%s/PasswordVault/API/auth/Logoff", c.baseURL)
+	logoffURL := fmt.Sprintf("%s/API/auth/Logoff", c.baseURL)
 	
 	req, err := http.NewRequestWithContext(ctx, "POST", logoffURL, nil)
 	if err != nil {
@@ -112,7 +170,17 @@ func (c *Client) Logoff(ctx context.Context) error {
 	
 	req.Header.Set("Authorization", c.token)
 	
-	resp, err := c.httpClient.Do(req)
+	// Get HTTP client (use factory if available)
+	httpClient := c.httpClient
+	if c.httpClientFactory != nil {
+		client, err := c.httpClientFactory()
+		if err != nil {
+			return fmt.Errorf("failed to create HTTP client: %w", err)
+		}
+		httpClient = client
+	}
+	
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to logoff: %w", err)
 	}

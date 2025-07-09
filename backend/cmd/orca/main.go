@@ -15,8 +15,6 @@ import (
 	"github.com/orca-ng/orca/internal/database"
 	"github.com/orca-ng/orca/internal/handlers"
 	"github.com/orca-ng/orca/internal/middleware"
-	"github.com/orca-ng/orca/internal/pipeline"
-	phandlers "github.com/orca-ng/orca/internal/pipeline/handlers"
 	"github.com/orca-ng/orca/internal/services"
 	"github.com/sirupsen/logrus"
 )
@@ -43,16 +41,26 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Connect to database
-	db, err := database.New(ctx, cfg.Database.URL)
+	// Connect to database using GORM
+	dbConfig := database.DatabaseConfig{
+		Driver: config.GetDatabaseDriver(),
+		DSN:    cfg.Database.URL,
+	}
+	
+	db, err := database.NewGormConnection(dbConfig)
 	if err != nil {
 		logrus.WithError(err).Fatal("Failed to connect to database")
 	}
 	defer db.Close()
 
-	// Initialize default admin user if needed
-	if err := initializeAdminUser(ctx, db); err != nil {
-		logrus.WithError(err).Fatal("Failed to initialize admin user")
+	// Run auto-migration
+	if err := db.AutoMigrate(); err != nil {
+		logrus.WithError(err).Fatal("Failed to run database migrations")
+	}
+
+	// Seed default data
+	if err := db.SeedDefaultData(); err != nil {
+		logrus.WithError(err).Fatal("Failed to seed default data")
 	}
 
 	// Set Gin mode
@@ -84,43 +92,25 @@ func main() {
 		"session_timeout": sessionTimeout,
 	}).Info("Session timeout configured")
 
-	// Initialize pipeline
-	sqlDB := db.SqlDB()
-	pipelineStore := pipeline.NewStore(sqlDB)
-	pipelineConfig, err := pipelineStore.GetPipelineConfig(ctx)
-	if err != nil {
-		logrus.WithError(err).Fatal("Failed to load pipeline configuration")
-	}
-	
-	processor := pipeline.NewProcessor(sqlDB, pipelineConfig, logrus.StandardLogger())
-	
-	// Register operation handlers
-	processor.RegisterHandler(pipeline.OpTypeSafeProvision, phandlers.NewSafeProvisionHandler())
-	processor.RegisterHandler(pipeline.OpTypeUserSync, phandlers.NewUserSyncHandler())
-	processor.RegisterHandler(pipeline.OpTypeSafeSync, phandlers.NewSafeSyncHandler())
-	
-	// Start the processing pipeline
-	if err := processor.Start(ctx); err != nil {
-		logrus.WithError(err).Fatal("Failed to start processing pipeline")
-	}
-	
 	// Initialize handlers
 	authHandler := handlers.NewAuthHandler(db, sessionTimeout)
-	operationsHandler := handlers.NewOperationsHandler(pipelineStore, db.SqlDB(), logrus.StandardLogger())
 	
-	// Get encryption key from environment or use a default for dev
+	// Get encryption key
 	encryptionKey := os.Getenv("ENCRYPTION_KEY")
 	if encryptionKey == "" {
-		encryptionKey = "dev-encryption-key-change-in-production"
 		if os.Getenv("APP_ENV") != "development" {
 			logrus.Fatal("ENCRYPTION_KEY environment variable must be set in production")
 		}
+		// Use a default key for development only
+		encryptionKey = "development-key-do-not-use-in-prod-32bytes!!"
 	}
+	
 	// Initialize certificate manager
-	certManager := services.NewCertificateManager(db.Pool(), logrus.StandardLogger())
+	certManager := services.NewCertificateManager(db, logrus.StandardLogger())
 	
 	cyberarkHandler := handlers.NewCyberArkInstancesHandler(db, logrus.StandardLogger(), encryptionKey, certManager)
 	certAuthHandler := handlers.NewCertificateAuthoritiesHandler(db, logrus.StandardLogger(), certManager)
+	operationsHandler := handlers.NewOperationsHandler(db, logrus.StandardLogger())
 
 	// API routes
 	api := router.Group("/api")
@@ -132,19 +122,28 @@ func main() {
 		
 		// Protected routes
 		protected := api.Group("/")
-		protected.Use(middleware.AuthRequired(db))
+		protected.Use(middleware.AuthRequired(authHandler))
 		{
-			protected.GET("/auth/me", authHandler.GetCurrentUser)
+			// Session check endpoint
+			protected.GET("/auth/check", func(c *gin.Context) {
+				user := middleware.GetUser(c)
+				c.JSON(http.StatusOK, gin.H{
+					"authenticated": true,
+					"user": user,
+				})
+			})
+			
+			// Current user endpoint (used by frontend)
+			protected.GET("/auth/me", func(c *gin.Context) {
+				user := middleware.GetUser(c)
+				c.JSON(http.StatusOK, user)
+			})
 			
 			// Operations routes
 			protected.GET("/operations", operationsHandler.ListOperations)
-			protected.GET("/operations/stats", operationsHandler.GetOperationStats)
 			protected.GET("/operations/:id", operationsHandler.GetOperation)
+			protected.POST("/operations", operationsHandler.CreateOperation)
 			protected.POST("/operations/:id/cancel", operationsHandler.CancelOperation)
-			
-			// Pipeline management routes
-			protected.GET("/pipeline/metrics", operationsHandler.GetPipelineMetrics)
-			protected.GET("/pipeline/config", operationsHandler.GetPipelineConfig)
 			
 			// CyberArk instances routes
 			protected.GET("/cyberark/instances", cyberarkHandler.ListInstances)
@@ -165,81 +164,74 @@ func main() {
 			
 			// Admin routes
 			admin := protected.Group("/admin")
-			admin.Use(middleware.AdminRequired())
+			admin.Use(middleware.AdminRequiredGorm())
 			{
-				// Pipeline configuration (admin only)
-				admin.PUT("/pipeline/config", operationsHandler.UpdatePipelineConfig)
+				// Admin-only endpoints can be added here
 			}
 		}
 	}
 
-	// Serve static files (only in production)
-	if os.Getenv("APP_ENV") != "development" {
-		setupStaticFiles(router)
-	} else {
-		// In development, the frontend is served separately
-		logrus.Info("Running in development mode, frontend served separately")
-	}
+	// Health check endpoint
+	router.GET("/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"status": "healthy",
+			"timestamp": time.Now().Unix(),
+		})
+	})
+
+	// Serve static files
+	// In development, this returns 404 and frontend is served by Vite
+	// In production, embed.go provides the actual implementation
+	router.NoRoute(func(c *gin.Context) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Not found - in development mode, use Vite dev server on port 5173"})
+	})
 
 	// Start server
 	srv := &http.Server{
-		Addr:    fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
+		Addr:    fmt.Sprintf(":%d", cfg.Server.Port),
 		Handler: router,
 	}
 
-	// Graceful shutdown
+	// Start background task to clean up expired sessions
 	go func() {
-		sigint := make(chan os.Signal, 1)
-		signal.Notify(sigint, os.Interrupt, syscall.SIGTERM)
-		<-sigint
-
-		logrus.Info("Shutting down server...")
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
 		
-		// Stop the processing pipeline first
-		if err := processor.Stop(); err != nil {
-			logrus.WithError(err).Error("Error stopping processing pipeline")
+		for {
+			select {
+			case <-ticker.C:
+				if err := authHandler.DeleteExpiredSessions(ctx); err != nil {
+					logrus.WithError(err).Error("Failed to delete expired sessions")
+				} else {
+					logrus.Info("Cleaned up expired sessions")
+				}
+			case <-ctx.Done():
+				return
+			}
 		}
-		
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer shutdownCancel()
-		
-		if err := srv.Shutdown(shutdownCtx); err != nil {
-			logrus.WithError(err).Error("Server forced to shutdown")
-		}
-		
-		cancel()
 	}()
 
-	logrus.Infof("Starting ORCA server on %s", srv.Addr)
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		logrus.WithError(err).Fatal("Failed to start server")
+	// Graceful shutdown
+	go func() {
+		logrus.WithField("port", cfg.Server.Port).Info("Starting server")
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logrus.WithError(err).Fatal("Failed to start server")
+		}
+	}()
+
+	// Wait for interrupt signal
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	logrus.Info("Shutting down server...")
+
+	// Graceful shutdown with timeout
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer shutdownCancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		logrus.WithError(err).Fatal("Server forced to shutdown")
 	}
 
-	<-ctx.Done()
-	logrus.Info("Server stopped")
-}
-
-func isAPIPath(path string) bool {
-	return len(path) >= 4 && path[:4] == "/api"
-}
-
-func initializeAdminUser(ctx context.Context, db *database.DB) error {
-	// Check if admin user exists
-	_, err := db.GetUserByUsername(ctx, "admin")
-	if err == nil {
-		// Admin user already exists
-		return nil
-	}
-
-	// Create default admin user
-	logrus.Info("Creating default admin user")
-	defaultPassword := "admin" // Should be changed on first login
-	
-	_, err = db.CreateUser(ctx, "admin", defaultPassword, true)
-	if err != nil {
-		return fmt.Errorf("failed to create admin user: %w", err)
-	}
-
-	logrus.Warn("Default admin user created with password 'admin' - PLEASE CHANGE THIS PASSWORD")
-	return nil
+	logrus.Info("Server exited")
 }

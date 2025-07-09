@@ -6,6 +6,7 @@ export interface CyberArkInstance {
   base_url: string;
   username: string;
   concurrent_sessions: boolean;
+  skip_tls_verify: boolean;
   is_active: boolean;
   last_test_at?: string;
   last_test_success?: boolean;
@@ -22,6 +23,7 @@ export interface CreateCyberArkInstanceRequest {
   username: string;
   password: string;
   concurrent_sessions?: boolean;
+  skip_tls_verify?: boolean;
 }
 
 export interface UpdateCyberArkInstanceRequest {
@@ -30,6 +32,7 @@ export interface UpdateCyberArkInstanceRequest {
   username?: string;
   password?: string;
   concurrent_sessions?: boolean;
+  skip_tls_verify?: boolean;
   is_active?: boolean;
 }
 
@@ -37,6 +40,7 @@ export interface TestConnectionRequest {
   base_url: string;
   username: string;
   password: string;
+  skip_tls_verify: boolean;
 }
 
 export interface TestConnectionResponse {

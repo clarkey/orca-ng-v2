@@ -59,7 +59,7 @@ import {
   useUpdateCyberArkInstance 
 } from '@/hooks/useCyberArkInstances';
 
-const STORAGE_KEY_PAGE_SIZE = 'orca-cyberark-instances-page-size';
+const STORAGE_KEY_PAGE_SIZE = 'cyberark-instances-page-size';
 
 export function Instances() {
   const [showForm, setShowForm] = useState(false);

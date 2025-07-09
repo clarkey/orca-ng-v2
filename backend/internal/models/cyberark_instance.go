@@ -13,6 +13,7 @@ type CyberArkInstance struct {
 	Username          string         `db:"username" json:"username"`
 	PasswordEncrypted string         `db:"password_encrypted" json:"-"` // Never expose in JSON
 	ConcurrentSessions bool          `db:"concurrent_sessions" json:"concurrent_sessions"`
+	SkipTLSVerify     bool           `db:"skip_tls_verify" json:"skip_tls_verify"`
 	IsActive          bool           `db:"is_active" json:"is_active"`
 	LastTestAt        *time.Time     `db:"last_test_at" json:"last_test_at,omitempty"`
 	LastTestSuccess   sql.NullBool   `db:"last_test_success" json:"last_test_success,omitempty"`
@@ -30,6 +31,7 @@ type CreateCyberArkInstanceRequest struct {
 	Username string `json:"username" binding:"required"`
 	Password string `json:"password" binding:"required"`
 	ConcurrentSessions *bool `json:"concurrent_sessions"`
+	SkipTLSVerify *bool `json:"skip_tls_verify"`
 }
 
 // UpdateCyberArkInstanceRequest represents the request to update an instance
@@ -39,6 +41,7 @@ type UpdateCyberArkInstanceRequest struct {
 	Username string `json:"username,omitempty"`
 	Password string `json:"password,omitempty"`
 	ConcurrentSessions *bool `json:"concurrent_sessions,omitempty"`
+	SkipTLSVerify *bool `json:"skip_tls_verify,omitempty"`
 	IsActive *bool  `json:"is_active,omitempty"`
 }
 
@@ -47,6 +50,7 @@ type TestConnectionRequest struct {
 	BaseURL  string `json:"base_url" binding:"required,url"`
 	Username string `json:"username" binding:"required"`
 	Password string `json:"password" binding:"required"`
+	SkipTLSVerify bool `json:"skip_tls_verify"`
 }
 
 // TestConnectionResponse represents the response from testing a connection

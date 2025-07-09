@@ -6,12 +6,12 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/orca-ng/orca/internal/database"
 	"github.com/orca-ng/orca/internal/models"
+	"github.com/orca-ng/orca/internal/services"
 	"github.com/sirupsen/logrus"
 )
 
-func AuthRequired(db *database.DB) gin.HandlerFunc {
+func AuthRequired(sessionService services.SessionService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Check Authorization header first
 		authHeader := c.GetHeader("Authorization")
@@ -50,8 +50,8 @@ func AuthRequired(db *database.DB) gin.HandlerFunc {
 			"token_length": len(token),
 		}).Debug("Attempting to validate session token")
 		
-		// Validate session
-		session, err := db.GetSessionByToken(c.Request.Context(), token)
+		// Validate session and get user
+		session, user, err := sessionService.GetSessionByToken(c.Request.Context(), token)
 		if err != nil {
 			logrus.WithFields(logrus.Fields{
 				"token": token,
@@ -62,29 +62,43 @@ func AuthRequired(db *database.DB) gin.HandlerFunc {
 			return
 		}
 		
-		// Get user
-		user, err := db.GetUserByID(c.Request.Context(), session.UserID)
-		if err != nil {
-			logrus.WithError(err).Error("Failed to get user for session")
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
-			c.Abort()
-			return
-		}
-		
 		if !user.IsActive {
 			c.JSON(http.StatusForbidden, gin.H{"error": "account is disabled"})
 			c.Abort()
 			return
 		}
 		
+		// Convert GORM models to old models for compatibility
+		userModel := &models.User{
+			ID:          user.ID,
+			Username:    user.Username,
+			PasswordHash: user.PasswordHash,
+			CreatedAt:   user.CreatedAt,
+			UpdatedAt:   user.UpdatedAt,
+			LastLoginAt: user.LastLoginAt,
+			IsActive:    user.IsActive,
+			IsAdmin:     user.IsAdmin,
+		}
+		
+		sessionModel := &models.Session{
+			ID:        session.ID,
+			UserID:    session.UserID,
+			Token:     session.Token,
+			ExpiresAt: session.ExpiresAt,
+			CreatedAt: session.CreatedAt,
+			UpdatedAt: session.UpdatedAt,
+			UserAgent: session.UserAgent,
+			IPAddress: session.IPAddress,
+		}
+		
 		// Store user and session in context
-		c.Set("user", user)
-		c.Set("session", session)
+		c.Set("user", userModel)
+		c.Set("session", sessionModel)
 		c.Next()
 	}
 }
 
-func AdminRequired() gin.HandlerFunc {
+func AdminRequiredGorm() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userInterface, exists := c.Get("user")
 		if !exists {
@@ -104,7 +118,7 @@ func AdminRequired() gin.HandlerFunc {
 	}
 }
 
-// GetUser retrieves the authenticated user from the gin context
+// GetUserGorm retrieves the authenticated user from the gin context
 func GetUser(c *gin.Context) *models.User {
 	userInterface, exists := c.Get("user")
 	if !exists {

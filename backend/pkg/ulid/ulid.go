@@ -17,6 +17,8 @@ const (
 	RolePrefix      Prefix = "rol"
 	OperationPrefix Prefix = "op"
 	ConfigPrefix    Prefix = "cfg"
+	CAPrefix        Prefix = "ca"
+	CyberArkInstancePrefix Prefix = "cai"
 )
 
 func New(prefix Prefix) string {
