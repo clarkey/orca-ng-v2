@@ -112,68 +112,8 @@ export default function OperationsTable() {
   const { data: response, isLoading, refetch, isFetching } = useOperations(queryParams, { prefetchNext: true });
   const cancelMutation = useCancelOperation();
   
-  // Add fake instance data for visualization
-  const fakeInstanceNames = [
-    'Production CyberArk',
-    'Development CyberArk', 
-    'UAT Environment',
-    'DR Site Instance',
-    'Cloud CyberArk',
-    'On-Prem Primary',
-    'APAC Region',
-    'EMEA Region',
-    'Americas Instance'
-  ];
-  
-  const dataWithFakeInstances = response?.operations?.map((op, index) => {
-    // Generate fake payload data based on operation type
-    const fakePayloads: Record<OperationType, any> = {
-      safe_provision: {
-        safe_name: `APP-PROD-${1000 + index}`,
-        description: 'Production application safe'
-      },
-      safe_modify: {
-        safe_name: `APP-DEV-${2000 + index}`,
-        changes: 'Updated retention policy'
-      },
-      safe_delete: {
-        safe_name: `APP-TEST-${3000 + index}`,
-        reason: 'Environment decommissioned'
-      },
-      access_grant: {
-        username: ['john.smith', 'jane.doe', 'bob.wilson', 'alice.brown'][index % 4],
-        safe_name: `APP-PROD-${1000 + index}`,
-        permission_set: ['Read-Only', 'Full Access', 'Retrieve'][index % 3]
-      },
-      access_revoke: {
-        username: ['mike.jones', 'sarah.davis', 'tom.white'][index % 3],
-        safe_name: `APP-UAT-${4000 + index}`
-      },
-      user_sync: {
-        sync_type: ['Full Sync', 'Incremental', 'Delta'][index % 3],
-        affected_users: Math.floor(Math.random() * 100) + 1
-      },
-      safe_sync: {
-        sync_type: ['Full Sync', 'Permissions Only'][index % 2],
-        affected_safes: Math.floor(Math.random() * 50) + 1
-      },
-      group_sync: {
-        sync_type: ['AD Groups', 'LDAP Groups'][index % 2],
-        affected_groups: Math.floor(Math.random() * 20) + 1
-      }
-    };
-    
-    return {
-      ...op,
-      cyberark_instance_info: {
-        id: op.cyberark_instance_id || `inst_${index}`,
-        name: fakeInstanceNames[index % fakeInstanceNames.length]
-      },
-      payload: fakePayloads[op.type] || op.payload
-    };
-  }) || [];
-  
-  const data = dataWithFakeInstances;
+  // Use real data from the API
+  const data = response?.operations || [];
   const totalCount = response?.pagination?.total_count || 0;
   const pageCount = response?.pagination?.total_pages || 0;
 
@@ -186,78 +126,63 @@ export default function OperationsTable() {
         id: 'status',
         accessorKey: 'status',
         header: () => <span></span>,
-        size: 60,
-        minSize: 60,
-        maxSize: 60,
+        size: 40,
+        minSize: 40,
+        maxSize: 40,
         cell: ({ row }) => {
           const operation = row.original;
           const scheduledTime = new Date(operation.scheduled_at);
           const now = new Date();
           const isScheduledForFuture = operation.status === 'pending' && scheduledTime > now;
           
-          // Match the exact styling from the timeline
           if (operation.status === 'pending' && isScheduledForFuture) {
             // Scheduled state (blue)
             return (
-              <div className="flex justify-center" title="Scheduled">
-                <div className="flex items-center justify-center w-7 h-7 bg-white border-2 border-blue-400 rounded-full">
-                  <Clock className="h-3.5 w-3.5 text-blue-600" />
-                </div>
+              <div className="flex items-center justify-center h-full" title="Scheduled">
+                <Clock className="h-5 w-5 text-blue-600" />
               </div>
             );
           } else if (operation.status === 'pending') {
             // Pending/Created state (gray)
             return (
-              <div className="flex justify-center" title="Pending">
-                <div className="flex items-center justify-center w-7 h-7 bg-white border-2 border-gray-300 rounded-full">
-                  <Clock className="h-3.5 w-3.5 text-gray-600" />
-                </div>
+              <div className="flex items-center justify-center h-full" title="Pending">
+                <Clock className="h-5 w-5 text-gray-600" />
               </div>
             );
           } else if (operation.status === 'processing') {
             // Processing/Started state (indigo)
             return (
-              <div className="flex justify-center" title="Processing">
-                <div className="flex items-center justify-center w-7 h-7 bg-white border-2 border-indigo-400 rounded-full">
-                  <Loader2 className="h-3.5 w-3.5 text-indigo-600 animate-spin" />
-                </div>
+              <div className="flex items-center justify-center h-full" title="Processing">
+                <Loader2 className="h-5 w-5 text-indigo-600 animate-spin" />
               </div>
             );
           } else if (operation.status === 'completed') {
             // Completed state (green)
             return (
-              <div className="flex justify-center" title="Completed">
-                <div className="flex items-center justify-center w-7 h-7 bg-white border-2 border-green-400 rounded-full">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
-                </div>
+              <div className="flex items-center justify-center h-full" title="Completed">
+                <CheckCircle2 className="h-5 w-5 text-green-600" />
               </div>
             );
           } else if (operation.status === 'failed') {
             // Failed state (red)
             return (
-              <div className="flex justify-center" title="Failed">
-                <div className="flex items-center justify-center w-7 h-7 bg-white border-2 border-red-400 rounded-full">
-                  <XCircle className="h-3.5 w-3.5 text-red-600" />
-                </div>
+              <div className="flex items-center justify-center h-full" title="Failed">
+                <XCircle className="h-5 w-5 text-red-600" />
               </div>
             );
           } else if (operation.status === 'cancelled') {
             // Cancelled state (amber)
             return (
-              <div className="flex justify-center" title="Cancelled">
-                <div className="flex items-center justify-center w-7 h-7 bg-white border-2 border-amber-400 rounded-full">
-                  <Ban className="h-3.5 w-3.5 text-amber-600" />
-                </div>
+              <div className="flex items-center justify-center h-full" title="Cancelled">
+                <Ban className="h-5 w-5 text-amber-600" />
               </div>
             );
           }
           
           // Fallback
           return (
-            <div className="flex justify-center" title={operation.status}>
-              <div className="flex items-center justify-center w-7 h-7 bg-white border-2 border-gray-300 rounded-full">
-                <Clock className="h-3.5 w-3.5 text-gray-600" />
-              </div>
+            <div className="flex items-center justify-center h-full" title={operation.status}>
+              <Clock className="h-5 w-5 text-gray-600" />
             </div>
           );
         },
@@ -336,8 +261,8 @@ export default function OperationsTable() {
               { key: 'safe_name', label: 'Safe' }
             ],
             user_sync: [
-              { key: 'sync_type', label: 'Type', primary: true },
-              { key: 'affected_users', label: 'Users' }
+              { key: 'sync_mode', label: 'Mode', primary: true },
+              { key: 'page_size', label: 'Page Size' }
             ],
             safe_sync: [
               { key: 'sync_type', label: 'Type', primary: true },

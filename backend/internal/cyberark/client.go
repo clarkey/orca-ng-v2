@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -179,18 +180,45 @@ func (c *Client) AuthenticateWithContext(ctx context.Context) (string, error) {
 	}
 	
 	// Parse the response to get the token
+	// CyberArk v10+ returns just a string token, older versions return JSON object
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response body: %w", err)
+	}
+	
+	bodyStr := string(bodyBytes)
+	
+	// First try to parse as a plain string token (v10+ format)
+	// Remove quotes if present
+	if strings.HasPrefix(bodyStr, "\"") && strings.HasSuffix(bodyStr, "\"") {
+		token := strings.Trim(bodyStr, "\"")
+		if token != "" {
+			c.token = token
+			return token, nil
+		}
+	}
+	
+	// Try to parse as JSON object (older format)
 	var authResp map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&authResp); err != nil {
-		return "", fmt.Errorf("failed to decode auth response: %w", err)
+	if err := json.Unmarshal(bodyBytes, &authResp); err != nil {
+		// If it's not JSON, treat the whole response as the token
+		token := strings.TrimSpace(bodyStr)
+		if token != "" {
+			c.token = token
+			return token, nil
+		}
+		return "", fmt.Errorf("failed to parse auth response: %w", err)
 	}
 	
-	token, ok := authResp["CyberArkLogonResult"].(string)
-	if !ok || token == "" {
-		return "", fmt.Errorf("no token in auth response")
+	// Look for token in JSON response
+	if tokenRaw, ok := authResp["CyberArkLogonResult"]; ok {
+		if token, ok := tokenRaw.(string); ok && token != "" {
+			c.token = token
+			return token, nil
+		}
 	}
 	
-	c.token = token
-	return token, nil
+	return "", fmt.Errorf("no token found in auth response")
 }
 
 // TestConnection tests the connection to CyberArk by attempting to authenticate

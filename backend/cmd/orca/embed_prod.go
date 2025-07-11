@@ -7,6 +7,7 @@ import (
 	"embed"
 	"io/fs"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
@@ -14,6 +15,11 @@ import (
 
 //go:embed all:dist
 var staticFiles embed.FS
+
+// isAPIPath checks if a path is an API path
+func isAPIPath(path string) bool {
+	return strings.HasPrefix(path, "/api/") || path == "/health"
+}
 
 func setupStaticFiles(router *gin.Engine) {
 	staticFS, err := fs.Sub(staticFiles, "dist")

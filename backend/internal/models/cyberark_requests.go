@@ -11,6 +11,7 @@ type CyberArkInstanceInfo struct {
 	ConcurrentSessions bool      `json:"concurrent_sessions"`
 	SkipTLSVerify      bool      `json:"skip_tls_verify"`
 	IsActive           bool      `json:"is_active"`
+	UserSyncPageSize   *int      `json:"user_sync_page_size,omitempty"`
 	LastTestAt         *time.Time `json:"last_test_at,omitempty"`
 	LastTestSuccess    *bool      `json:"last_test_success,omitempty"`
 	LastTestError      *string    `json:"last_test_error,omitempty"`

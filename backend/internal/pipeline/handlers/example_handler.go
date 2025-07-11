@@ -52,7 +52,8 @@ func (h *ExampleHandler) Handle(ctx context.Context, op *pipeline.Operation) err
 	}
 	
 	resultJSON, _ := json.Marshal(result)
-	op.Result = &resultJSON
+	resultRaw := json.RawMessage(resultJSON)
+	op.Result = &resultRaw
 	
 	return nil
 }

@@ -210,6 +210,35 @@ export function Instances() {
               </Badge>
             );
           }
+          
+          // Calculate how long ago the test was performed
+          const testDate = new Date(instance.last_test_at);
+          const now = new Date();
+          const hoursSinceTest = (now.getTime() - testDate.getTime()) / (1000 * 60 * 60);
+          
+          // If test is older than 24 hours, consider it stale
+          if (hoursSinceTest > 24) {
+            return (
+              <Badge variant="secondary" className="gap-1">
+                <AlertCircle className="h-3 w-3" />
+                Unknown
+              </Badge>
+            );
+          }
+          
+          // If test is older than 1 hour but less than 24 hours, show warning
+          if (hoursSinceTest > 1) {
+            if (instance.last_test_success) {
+              return (
+                <Badge variant="warning" className="gap-1">
+                  <Clock className="h-3 w-3" />
+                  Stale
+                </Badge>
+              );
+            }
+          }
+          
+          // Recent test results
           if (instance.last_test_success) {
             return (
               <Badge variant="success" className="gap-1">
@@ -252,16 +281,33 @@ export function Instances() {
           )
         },
         size: 180,
-        cell: ({ row }) => (
-          row.original.last_test_at ? (
-            <div className="flex items-center gap-2 text-sm text-gray-600">
-              <Clock className="h-3.5 w-3.5" />
-              {format(new Date(row.original.last_test_at), 'MMM d, HH:mm')}
+        cell: ({ row }) => {
+          if (!row.original.last_test_at) {
+            return <span className="text-sm text-gray-400">Never</span>;
+          }
+          
+          const testDate = new Date(row.original.last_test_at);
+          const now = new Date();
+          const hoursSinceTest = (now.getTime() - testDate.getTime()) / (1000 * 60 * 60);
+          
+          let textColor = "text-gray-600";
+          let iconColor = "";
+          
+          if (hoursSinceTest > 24) {
+            textColor = "text-gray-400";
+            iconColor = "text-gray-400";
+          } else if (hoursSinceTest > 1) {
+            textColor = "text-yellow-600";
+            iconColor = "text-yellow-600";
+          }
+          
+          return (
+            <div className={`flex items-center gap-2 text-sm ${textColor}`}>
+              <Clock className={`h-3.5 w-3.5 ${iconColor}`} />
+              {format(testDate, 'MMM d, HH:mm')}
             </div>
-          ) : (
-            <span className="text-sm text-gray-400">Never</span>
-          )
-        ),
+          );
+        },
       },
       {
         id: 'is_active',

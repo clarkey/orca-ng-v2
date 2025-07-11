@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -15,19 +16,23 @@ import (
 	"github.com/orca-ng/orca/internal/database"
 	"github.com/orca-ng/orca/internal/middleware"
 	gormmodels "github.com/orca-ng/orca/internal/models/gorm"
+	"github.com/orca-ng/orca/internal/services"
+	"github.com/orca-ng/orca/pkg/ulid"
 )
 
 // OperationsHandlerGorm handles operation-related API endpoints
 type OperationsHandler struct {
 	db     *database.GormDB
 	logger *logrus.Logger
+	events *services.OperationEventService
 }
 
 // NewOperationsHandlerGorm creates a new operations handler
-func NewOperationsHandler(db *database.GormDB, logger *logrus.Logger) *OperationsHandler {
+func NewOperationsHandler(db *database.GormDB, logger *logrus.Logger, events *services.OperationEventService) *OperationsHandler {
 	return &OperationsHandler{
 		db:     db,
 		logger: logger,
+		events: events,
 	}
 }
 
@@ -192,6 +197,15 @@ func (h *OperationsHandler) CancelOperation(c *gin.Context) {
 	}
 	
 	h.logger.WithField("operation_id", id).Info("Operation cancelled")
+	
+	// Publish cancellation event
+	if h.events != nil {
+		var op gormmodels.Operation
+		if err := h.db.Preload("Creator").Preload("CyberArkInstance").First(&op, "id = ?", id).Error; err == nil {
+			h.events.PublishOperationUpdated(&op)
+		}
+	}
+	
 	c.JSON(http.StatusOK, gin.H{"message": "Operation cancelled"})
 }
 
@@ -250,6 +264,13 @@ func (h *OperationsHandler) CreateOperation(c *gin.Context) {
 		"priority":     operation.Priority,
 		"user_id":      user.ID,
 	}).Info("Operation created")
+	
+	// Publish creation event
+	if h.events != nil {
+		// Load related data for the event
+		h.db.Preload("Creator").Preload("CyberArkInstance").First(operation, "id = ?", operation.ID)
+		h.events.PublishOperationCreated(operation)
+	}
 	
 	c.JSON(http.StatusCreated, h.operationToResponse(operation))
 }
@@ -339,5 +360,81 @@ func (h *OperationsHandler) UpdatePriority(c *gin.Context) {
 		"new_priority": req.Priority,
 	}).Info("Operation priority updated")
 	
+	// Publish update event
+	if h.events != nil {
+		// Reload with related data
+		h.db.Preload("Creator").Preload("CyberArkInstance").First(&operation, "id = ?", operation.ID)
+		h.events.PublishOperationUpdated(&operation)
+	}
+	
 	c.JSON(http.StatusOK, gin.H{"message": "Priority updated successfully"})
+}
+
+// StreamOperations streams operation updates via Server-Sent Events
+func (h *OperationsHandler) StreamOperations(c *gin.Context) {
+	// Set SSE headers
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("X-Accel-Buffering", "no") // Disable Nginx buffering
+	
+	// Get user from context
+	user := middleware.GetUser(c)
+	if user == nil {
+		c.String(http.StatusUnauthorized, "data: {\"error\":\"unauthorized\"}\n\n")
+		return
+	}
+	
+	// Create a unique client ID
+	clientID := fmt.Sprintf("user_%s_%s", user.ID, ulid.New(ulid.SessionPrefix))
+	
+	// Subscribe to operation events
+	ctx := c.Request.Context()
+	events := h.events.Subscribe(ctx, clientID)
+	
+	// Send initial connection event
+	c.SSEvent("connected", gin.H{"client_id": clientID})
+	c.Writer.Flush()
+	
+	// Keep track of heartbeat
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	
+	h.logger.WithFields(logrus.Fields{
+		"client_id": clientID,
+		"user_id":   user.ID,
+	}).Info("SSE client connected")
+	
+	// Stream events
+	for {
+		select {
+		case event, ok := <-events:
+			if !ok {
+				// Channel closed
+				return
+			}
+			
+			// Convert operation to API response format
+			if event.Operation != nil {
+				// Need to preload related data for the response
+				h.db.Preload("Creator").Preload("CyberArkInstance").First(event.Operation, "id = ?", event.Operation.ID)
+				response := h.operationToResponse(event.Operation)
+				c.SSEvent(event.Type, response)
+				c.Writer.Flush()
+			}
+			
+		case <-ticker.C:
+			// Send heartbeat
+			c.SSEvent("heartbeat", gin.H{"timestamp": time.Now().Unix()})
+			c.Writer.Flush()
+			
+		case <-ctx.Done():
+			// Client disconnected
+			h.logger.WithFields(logrus.Fields{
+				"client_id": clientID,
+				"user_id":   user.ID,
+			}).Info("SSE client disconnected")
+			return
+		}
+	}
 }

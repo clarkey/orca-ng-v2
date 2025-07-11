@@ -125,41 +125,7 @@ export const operationsApi = {
     page?: number;
     page_size?: number;
   }): Promise<OperationsListResponse> => {
-    const response = await apiClient.get<OperationsListResponse>('/operations', { params });
-    
-    // Add a mock future operation for demo purposes
-    const futureDate = new Date();
-    futureDate.setHours(futureDate.getHours() + 3); // 3 hours from now
-    
-    const mockFutureOperation: Operation = {
-      id: 'op_mock_future_123',
-      type: 'safe_provision',
-      priority: 'high',
-      status: 'pending',
-      scheduled_at: futureDate.toISOString(),
-      created_at: new Date().toISOString(),
-      payload: {
-        safe_name: 'PROD-DB-ACCESS',
-        description: 'Production database access safe',
-        retention_days: 90
-      },
-      created_by: 'usr_admin',
-      created_by_user: {
-        id: 'usr_admin',
-        username: 'admin'
-      },
-      cyberark_instance_id: 'cai_prod',
-      cyberark_instance_info: {
-        id: 'cai_prod',
-        name: 'Production CyberArk'
-      }
-    };
-    
-    // Insert at the beginning of the list
-    response.operations.unshift(mockFutureOperation);
-    response.pagination.total_count += 1;
-    
-    return response;
+    return await apiClient.get<OperationsListResponse>('/operations', { params });
   },
   
   // Get operation statistics

@@ -158,12 +158,34 @@ export default function OperationDetail() {
             </div>
           </div>
 
+          {/* Instance Info */}
+          {operation.cyberark_instance_info && (
+            <div>
+              <p className="text-sm font-medium text-gray-500">CyberArk Instance</p>
+              <p className="text-sm">{operation.cyberark_instance_info.name}</p>
+            </div>
+          )}
+
+          {/* Created By */}
+          {operation.created_by_user && (
+            <div>
+              <p className="text-sm font-medium text-gray-500">Created By</p>
+              <p className="text-sm">{operation.created_by_user.username}</p>
+            </div>
+          )}
+
           {/* Timestamps */}
           <div className="space-y-2">
             <div>
               <p className="text-sm font-medium text-gray-500">Created</p>
               <p className="text-sm">{format(new Date(operation.created_at), 'PPpp')}</p>
             </div>
+            {operation.started_at && (
+              <div>
+                <p className="text-sm font-medium text-gray-500">Started</p>
+                <p className="text-sm">{format(new Date(operation.started_at), 'PPpp')}</p>
+              </div>
+            )}
             {operation.completed_at && (
               <div>
                 <p className="text-sm font-medium text-gray-500">Completed</p>
@@ -179,6 +201,28 @@ export default function OperationDetail() {
             )}
           </div>
 
+          {/* Payload */}
+          {operation.payload && (
+            <div>
+              <p className="text-sm font-medium text-gray-500 mb-2">Operation Details</p>
+              <div className="bg-gray-50 rounded p-4">
+                {operation.type === 'user_sync' && operation.payload.sync_mode && (
+                  <div className="space-y-1 text-sm">
+                    <p><span className="font-medium">Sync Mode:</span> {operation.payload.sync_mode}</p>
+                    {operation.payload.page_size && (
+                      <p><span className="font-medium">Page Size:</span> {operation.payload.page_size}</p>
+                    )}
+                  </div>
+                )}
+                {operation.type !== 'user_sync' && (
+                  <pre className="text-sm overflow-auto">
+                    {JSON.stringify(operation.payload, null, 2)}
+                  </pre>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Error Message */}
           {operation.error_message && (
             <div className="bg-red-50 border border-red-200 rounded p-4">
@@ -191,9 +235,51 @@ export default function OperationDetail() {
           {operation.result && (
             <div>
               <p className="text-sm font-medium text-gray-500 mb-2">Result</p>
-              <pre className="bg-gray-50 rounded p-4 text-sm overflow-auto">
-                {JSON.stringify(operation.result, null, 2)}
-              </pre>
+              <div className="bg-gray-50 rounded p-4">
+                {operation.type === 'user_sync' && operation.result.total_users !== undefined && (
+                  <div className="space-y-2 text-sm">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="font-medium text-gray-600">Total Users</p>
+                        <p className="text-2xl font-semibold">{operation.result.total_users}</p>
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-600">Processed</p>
+                        <p className="text-2xl font-semibold">{operation.result.processed_users || 0}</p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-4 mt-4">
+                      <div>
+                        <p className="font-medium text-gray-600">New Users</p>
+                        <p className="text-lg font-semibold text-green-600">{operation.result.new_users || 0}</p>
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-600">Updated</p>
+                        <p className="text-lg font-semibold text-blue-600">{operation.result.updated_users || 0}</p>
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-600">Deleted</p>
+                        <p className="text-lg font-semibold text-red-600">{operation.result.deleted_users || 0}</p>
+                      </div>
+                    </div>
+                    {operation.result.errors && operation.result.errors.length > 0 && (
+                      <div className="mt-4">
+                        <p className="font-medium text-gray-600 mb-2">Errors</p>
+                        <ul className="list-disc list-inside space-y-1">
+                          {operation.result.errors.map((error: string, index: number) => (
+                            <li key={index} className="text-red-600">{error}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {(operation.type !== 'user_sync' || operation.result.total_users === undefined) && (
+                  <pre className="text-sm overflow-auto">
+                    {JSON.stringify(operation.result, null, 2)}
+                  </pre>
+                )}
+              </div>
             </div>
           )}
         </CardContent>

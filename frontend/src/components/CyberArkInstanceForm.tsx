@@ -47,6 +47,11 @@ const baseSchema = z.object({
     .min(1, 'Username is required')
     .min(3, 'Username must be at least 3 characters'),
   concurrent_sessions: z.boolean().default(true),
+  user_sync_page_size: z.number()
+    .min(1, 'Page size must be at least 1')
+    .max(1000, 'Page size cannot exceed 1000')
+    .optional()
+    .nullable(),
 });
 
 const createSchema = baseSchema.extend({
@@ -89,6 +94,7 @@ export function CyberArkInstanceForm({ open, onClose, onSuccess, instance, onDel
       password: '',
       concurrent_sessions: true,
       skip_tls_verify: false,
+      user_sync_page_size: 100,
     },
   });
 
@@ -103,6 +109,7 @@ export function CyberArkInstanceForm({ open, onClose, onSuccess, instance, onDel
           password: '', // Password is never sent from backend
           concurrent_sessions: instance.concurrent_sessions ?? true,
           skip_tls_verify: instance.skip_tls_verify ?? false,
+          user_sync_page_size: instance.user_sync_page_size ?? 100,
         });
       } else {
         // Try to load saved values from localStorage for new instances
@@ -117,6 +124,7 @@ export function CyberArkInstanceForm({ open, onClose, onSuccess, instance, onDel
               password: '', // Never restore password
               concurrent_sessions: parsed.concurrent_sessions ?? true,
               skip_tls_verify: parsed.skip_tls_verify ?? false,
+              user_sync_page_size: parsed.user_sync_page_size ?? 100,
             });
           } catch {
             // If parse fails, use defaults
@@ -127,6 +135,7 @@ export function CyberArkInstanceForm({ open, onClose, onSuccess, instance, onDel
               password: '',
               concurrent_sessions: true,
               skip_tls_verify: false,
+              user_sync_page_size: 100,
             });
           }
         } else {
@@ -137,6 +146,7 @@ export function CyberArkInstanceForm({ open, onClose, onSuccess, instance, onDel
             password: '',
             concurrent_sessions: true,
             skip_tls_verify: false,
+            user_sync_page_size: 100,
           });
         }
       }

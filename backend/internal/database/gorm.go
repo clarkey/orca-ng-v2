@@ -98,6 +98,9 @@ func (db *GormDB) AutoMigrate() error {
 		&gormmodels.Session{},
 		&gormmodels.CertificateAuthority{},
 		&gormmodels.CyberArkInstance{},
+		&gormmodels.CyberArkUser{},
+		&gormmodels.CyberArkGroupMembership{},
+		&gormmodels.CyberArkVaultAuthorization{},
 		&gormmodels.Operation{},
 		&gormmodels.PipelineConfig{},
 	)

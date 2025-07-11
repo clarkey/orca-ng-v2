@@ -122,7 +122,13 @@ export default function Operations() {
                     <div>
                       <p className="font-medium">{getOperationTypeLabel(operation.type)}</p>
                       <p className="text-sm text-gray-500">
-                        ID: {operation.id} • Created: {format(new Date(operation.created_at), 'MMM d, HH:mm:ss')}
+                        {operation.cyberark_instance_info ? (
+                          <>Instance: {operation.cyberark_instance_info.name} • </>
+                        ) : null}
+                        Created: {format(new Date(operation.created_at), 'MMM d, HH:mm:ss')}
+                        {operation.created_by_user && (
+                          <> • By: {operation.created_by_user.username}</>
+                        )}
                       </p>
                     </div>
                   </div>

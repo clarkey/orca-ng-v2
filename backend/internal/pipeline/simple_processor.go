@@ -25,6 +25,7 @@ type SimpleProcessor struct {
 	logger          *logrus.Logger
 	certManager     *services.CertificateManager
 	encryptor       *crypto.Encryptor
+	events          *services.OperationEventService
 	
 	// Processing state
 	ctx             context.Context
@@ -46,7 +47,7 @@ type cyberArkSession struct {
 }
 
 // NewSimpleProcessor creates a new simplified pipeline processor
-func NewSimpleProcessor(db *database.GormDB, config *PipelineConfig, logger *logrus.Logger, certManager *services.CertificateManager, encryptionKey string) *SimpleProcessor {
+func NewSimpleProcessor(db *database.GormDB, config *PipelineConfig, logger *logrus.Logger, certManager *services.CertificateManager, encryptionKey string, events *services.OperationEventService) *SimpleProcessor {
 	return &SimpleProcessor{
 		db:          db,
 		config:      config,
@@ -54,6 +55,7 @@ func NewSimpleProcessor(db *database.GormDB, config *PipelineConfig, logger *log
 		logger:      logger,
 		certManager: certManager,
 		encryptor:   crypto.NewEncryptor(encryptionKey),
+		events:      events,
 		sessions:    make(map[string]*cyberArkSession),
 	}
 }
@@ -156,6 +158,10 @@ func (p *SimpleProcessor) processNext() error {
 			return fmt.Errorf("update operation status: %w", err)
 		}
 		
+		// Update the operation object with new values
+		op.Status = gormmodels.OpStatusProcessing
+		op.StartedAt = &now
+		
 		return nil
 	})
 	
@@ -170,6 +176,11 @@ func (p *SimpleProcessor) processNext() error {
 		"priority":    op.Priority,
 		"instance_id": op.CyberArkInstanceID,
 	}).Info("Processing operation")
+	
+	// Publish processing event
+	if p.events != nil {
+		p.events.PublishOperationUpdated(&op)
+	}
 	
 	// Execute the operation with the appropriate CyberArk session
 	err = p.executeOperation(&op)
@@ -291,7 +302,7 @@ func (p *SimpleProcessor) createSession(instanceID string) (*cyberArkSession, er
 	}
 	
 	// Decrypt password
-	password, err := p.encryptor.Decrypt(instance.Password)
+	password, err := p.encryptor.Decrypt(instance.PasswordEncrypted)
 	if err != nil {
 		return nil, fmt.Errorf("decrypt password: %w", err)
 	}
@@ -404,9 +415,10 @@ func (p *SimpleProcessor) completeOperation(op *gormmodels.Operation, result jso
 		"completed_at": now,
 	}
 	
+	var errMsg string
 	if err != nil {
 		updates["status"] = gormmodels.OpStatusFailed
-		errMsg := err.Error()
+		errMsg = err.Error()
 		updates["error_message"] = errMsg
 		
 		p.logger.WithFields(logrus.Fields{
@@ -429,6 +441,24 @@ func (p *SimpleProcessor) completeOperation(op *gormmodels.Operation, result jso
 	// Update in database
 	if dbErr := p.db.Model(op).Updates(updates).Error; dbErr != nil {
 		p.logger.WithError(dbErr).Error("Failed to update operation status")
+		return
+	}
+	
+	// Apply updates to the operation object
+	if err != nil {
+		op.Status = gormmodels.OpStatusFailed
+		op.ErrorMessage = &errMsg
+	} else {
+		op.Status = gormmodels.OpStatusCompleted
+		if result != nil {
+			op.Result = &result
+		}
+	}
+	op.CompletedAt = &now
+	
+	// Publish event
+	if p.events != nil {
+		p.events.PublishOperationUpdated(op)
 	}
 }
 
@@ -463,6 +493,18 @@ func (p *SimpleProcessor) retryOperation(op *gormmodels.Operation, err error) {
 	
 	if dbErr := p.db.Model(op).Updates(updates).Error; dbErr != nil {
 		p.logger.WithError(dbErr).Error("Failed to schedule retry")
+		return
+	}
+	
+	// Update the operation object
+	op.Status = gormmodels.OpStatusPending
+	op.ScheduledAt = scheduledAt
+	op.ErrorMessage = &errMsg
+	op.StartedAt = nil
+	
+	// Publish retry event
+	if p.events != nil {
+		p.events.PublishOperationUpdated(op)
 	}
 }
 

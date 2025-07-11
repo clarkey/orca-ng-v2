@@ -12,10 +12,12 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/orca-ng/orca/internal/config"
+	"github.com/orca-ng/orca/internal/crypto"
 	"github.com/orca-ng/orca/internal/database"
 	"github.com/orca-ng/orca/internal/handlers"
 	"github.com/orca-ng/orca/internal/middleware"
 	"github.com/orca-ng/orca/internal/pipeline"
+	pipelinehandlers "github.com/orca-ng/orca/internal/pipeline/handlers"
 	"github.com/orca-ng/orca/internal/services"
 	"github.com/sirupsen/logrus"
 )
@@ -109,6 +111,9 @@ func main() {
 	// Initialize certificate manager
 	certManager := services.NewCertificateManager(db, logrus.StandardLogger())
 	
+	// Initialize operation event service
+	eventService := services.NewOperationEventService(logrus.StandardLogger())
+	
 	// Initialize pipeline processor
 	pipelineConfig := &pipeline.PipelineConfig{
 		TotalCapacity:      1, // Process one operation at a time
@@ -119,10 +124,13 @@ func main() {
 		},
 	}
 	
-	processor := pipeline.NewSimpleProcessor(db, pipelineConfig, logrus.StandardLogger(), certManager, encryptionKey)
+	processor := pipeline.NewSimpleProcessor(db, pipelineConfig, logrus.StandardLogger(), certManager, encryptionKey, eventService)
 	
 	// Register operation handlers
-	// TODO: Register actual handlers for each operation type
+	userSyncHandler := pipelinehandlers.NewUserSyncHandler(db, logrus.StandardLogger(), certManager, crypto.NewEncryptor(encryptionKey))
+	processor.RegisterHandler(pipeline.OpTypeUserSync, userSyncHandler)
+	
+	// TODO: Register other handlers for each operation type
 	// processor.RegisterHandler(pipeline.OpTypeSafeProvision, &handlers.SafeProvisionHandler{})
 	// processor.RegisterHandler(pipeline.OpTypeAccessGrant, &handlers.AccessGrantHandler{})
 	// etc.
@@ -134,7 +142,8 @@ func main() {
 	
 	cyberarkHandler := handlers.NewCyberArkInstancesHandler(db, logrus.StandardLogger(), encryptionKey, certManager)
 	certAuthHandler := handlers.NewCertificateAuthoritiesHandler(db, logrus.StandardLogger(), certManager)
-	operationsHandler := handlers.NewOperationsHandler(db, logrus.StandardLogger())
+	operationsHandler := handlers.NewOperationsHandler(db, logrus.StandardLogger(), eventService)
+	syncSchedulesHandler := handlers.NewSyncSchedulesHandler(db, logrus.StandardLogger(), eventService)
 
 	// API routes
 	api := router.Group("/api")
@@ -169,6 +178,7 @@ func main() {
 			protected.POST("/operations", operationsHandler.CreateOperation)
 			protected.POST("/operations/:id/cancel", operationsHandler.CancelOperation)
 			protected.PATCH("/operations/:id/priority", operationsHandler.UpdatePriority)
+			protected.GET("/operations/stream", operationsHandler.StreamOperations)
 			
 			// CyberArk instances routes
 			protected.GET("/cyberark/instances", cyberarkHandler.ListInstances)
@@ -186,6 +196,16 @@ func main() {
 			protected.PUT("/certificate-authorities/:id", certAuthHandler.Update)
 			protected.DELETE("/certificate-authorities/:id", certAuthHandler.Delete)
 			protected.POST("/certificate-authorities/refresh", certAuthHandler.RefreshPool)
+			
+			// Sync schedules routes
+			protected.GET("/sync/schedules", syncSchedulesHandler.GetSchedules)
+			protected.PUT("/sync/schedules/:instanceId", syncSchedulesHandler.UpdateSchedule)
+			protected.PUT("/sync/schedules/:instanceId/:entityType", syncSchedulesHandler.UpdateEntitySchedule)
+			protected.POST("/sync/schedules/:instanceId/:entityType/trigger", syncSchedulesHandler.TriggerSync)
+			protected.PUT("/sync/schedules/:instanceId/pause", syncSchedulesHandler.PauseInstance)
+			protected.PUT("/sync/schedules/:instanceId/resume", syncSchedulesHandler.ResumeInstance)
+			protected.POST("/sync/schedules/pause-all", syncSchedulesHandler.PauseAll)
+			protected.POST("/sync/schedules/resume-all", syncSchedulesHandler.ResumeAll)
 			
 			// Admin routes
 			admin := protected.Group("/admin")

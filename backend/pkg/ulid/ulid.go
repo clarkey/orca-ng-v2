@@ -19,6 +19,9 @@ const (
 	ConfigPrefix    Prefix = "cfg"
 	CAPrefix        Prefix = "ca"
 	CyberArkInstancePrefix Prefix = "cai"
+	CyberArkUserPrefix Prefix = "cau"
+	GroupMembershipPrefix Prefix = "cgm"
+	VaultAuthPrefix Prefix = "cva"
 )
 
 func New(prefix Prefix) string {

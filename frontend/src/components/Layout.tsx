@@ -18,6 +18,7 @@ import {
   Shield,
   Bell,
   Database,
+  RefreshCw,
   Globe,
   Search,
   LogOut,
@@ -134,6 +135,7 @@ export function Layout() {
     ],
     operations: [
       { name: 'Operations Queue', href: '/operations', icon: ListTodo },
+      { name: 'Instance Sync', href: '/instance-sync', icon: RefreshCw },
       { name: 'Queue Monitoring', href: '/pipeline', icon: Activity },
     ],
     administration: [
