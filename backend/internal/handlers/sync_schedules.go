@@ -433,3 +433,23 @@ func (h *SyncSchedulesHandler) getOperationType(entityType string) string {
 		return ""
 	}
 }
+
+// UpdateInstanceSchedule updates sync schedule for an instance using instance_id from path
+func (h *SyncSchedulesHandler) UpdateInstanceSchedule(c *gin.Context) {
+	c.Params = append(c.Params, gin.Param{Key: "instanceId", Value: c.Param("instance_id")})
+	h.UpdateSchedule(c)
+}
+
+// UpdateInstanceEntitySchedule updates entity-specific schedule using instance_id from path
+func (h *SyncSchedulesHandler) UpdateInstanceEntitySchedule(c *gin.Context) {
+	c.Params = append(c.Params, gin.Param{Key: "instanceId", Value: c.Param("instance_id")})
+	c.Params = append(c.Params, gin.Param{Key: "entityType", Value: c.Param("entity_type")})
+	h.UpdateEntitySchedule(c)
+}
+
+// TriggerInstanceSync triggers sync for an entity using instance_id from path
+func (h *SyncSchedulesHandler) TriggerInstanceSync(c *gin.Context) {
+	c.Params = append(c.Params, gin.Param{Key: "instanceId", Value: c.Param("instance_id")})
+	c.Params = append(c.Params, gin.Param{Key: "entityType", Value: c.Param("entity_type")})
+	h.TriggerSync(c)
+}

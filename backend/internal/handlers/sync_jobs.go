@@ -297,3 +297,96 @@ func (h *SyncJobsHandler) StreamSyncJobs(c *gin.Context) {
 		}
 	}
 }
+
+// ListSyncJobsForInstance lists sync jobs for a specific instance
+func (h *SyncJobsHandler) ListSyncJobsForInstance(c *gin.Context) {
+	instanceID := c.Param("instance_id")
+	
+	// Parse query parameters
+	syncType := c.Query("sync_type")
+	status := c.Query("status")
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
+	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
+
+	// Build query
+	query := h.db.Model(&gormmodels.SyncJob{}).
+		Where("cyberark_instance_id = ?", instanceID).
+		Preload("CyberArkInstance").
+		Preload("CreatedByUser").
+		Order("created_at DESC")
+
+	if syncType != "" {
+		query = query.Where("sync_type = ?", syncType)
+	}
+	if status != "" {
+		query = query.Where("status = ?", status)
+	}
+
+	// Count total
+	var total int64
+	query.Count(&total)
+
+	// Get results
+	var jobs []gormmodels.SyncJob
+	if err := query.Limit(limit).Offset(offset).Find(&jobs).Error; err != nil {
+		h.logger.WithError(err).Error("Failed to list sync jobs")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list sync jobs"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"sync_jobs": jobs,
+		"total":     total,
+		"limit":     limit,
+		"offset":    offset,
+	})
+}
+
+// TriggerSyncForInstanceRequest represents a request to trigger a sync for a specific instance
+type TriggerSyncForInstanceRequest struct {
+	SyncType string `json:"sync_type" binding:"required,oneof=users safes groups"`
+}
+
+// TriggerSyncForInstance manually triggers a sync job for a specific instance
+func (h *SyncJobsHandler) TriggerSyncForInstance(c *gin.Context) {
+	instanceID := c.Param("instance_id")
+	
+	var req TriggerSyncForInstanceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Get user from context
+	user := middleware.GetUser(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
+		return
+	}
+
+	// Check if instance exists and is active
+	var instance gormmodels.CyberArkInstance
+	if err := h.db.First(&instance, "id = ? AND is_active = ?", instanceID, true).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Active instance not found"})
+		return
+	}
+
+	// Create sync job
+	job, err := h.syncService.CreateSyncJob(
+		instanceID,
+		req.SyncType,
+		gormmodels.TriggeredByManual,
+		&user.ID,
+	)
+	if err != nil {
+		h.logger.WithError(err).Error("Failed to create sync job")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create sync job"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"message": "Sync job created",
+		"job_id":  job.ID,
+		"job":     job,
+	})
+}

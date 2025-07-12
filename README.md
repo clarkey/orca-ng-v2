@@ -105,6 +105,49 @@ Session tokens are stored securely:
 - **Linux**: `~/.config/orca-cli/`
 - **Windows**: `%APPDATA%\orca-cli\`
 
+### Resetting the Admin Password
+
+The ORCA server binary includes built-in password reset functionality:
+
+```bash
+# In development (using -tags dev to skip frontend embedding for faster execution)
+docker-compose exec backend sh -c "go run -tags dev ./cmd/orca --reset-password='new-password'"
+
+# Reset a specific user's password
+docker-compose exec backend sh -c "go run -tags dev ./cmd/orca --reset-password='new-password' --username='john.doe'"
+
+# In production (using pre-built binary)
+docker-compose exec backend ./orca-server --reset-password='new-password'
+```
+
+**Note**: The `-tags dev` flag is used in development to skip embedding frontend files into the binary, making the password reset operation faster. In production, the binary is already built without this flag.
+
+Alternative methods:
+
+```bash
+# Using the CLI with local database access
+docker-compose exec backend sh -c "go build -o orca-cli cmd/orca-cli/main.go"
+docker-compose exec backend sh -c "DATABASE_URL='postgres://orca:orca@postgres:5432/orca?sslmode=disable' ./orca-cli user reset-password --username admin --local"
+```
+
+### Generating Secure Passwords
+
+The `orca-keygen` utility can generate secure random passwords:
+
+```bash
+# Build the keygen tool
+docker-compose exec backend go build -o orca-keygen cmd/orca-keygen/main.go
+
+# Generate a secure password (default 16 characters)
+docker-compose exec backend ./orca-keygen password
+
+# Generate a longer password
+docker-compose exec backend ./orca-keygen password 24
+
+# Generate all security keys for production
+docker-compose exec backend ./orca-keygen all
+```
+
 ## 🏗️ Project Structure
 
 ```

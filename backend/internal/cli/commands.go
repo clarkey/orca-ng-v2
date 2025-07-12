@@ -267,10 +267,18 @@ func newUserResetPasswordCmd() *cobra.Command {
 					// Direct database connection for local admin reset
 					dbURL := viper.GetString("DATABASE_URL")
 					if dbURL == "" {
-						return fmt.Errorf("DATABASE_URL environment variable not set")
+						dbURL = os.Getenv("DATABASE_URL")
+						if dbURL == "" {
+							return fmt.Errorf("DATABASE_URL environment variable not set")
+						}
 					}
 
-					db, err := database.NewDB(context.Background(), dbURL)
+					config := database.DatabaseConfig{
+						Driver: "postgres",
+						DSN:    dbURL,
+					}
+					
+					db, err := database.NewGormConnection(config)
 					if err != nil {
 						return fmt.Errorf("failed to connect to database: %w", err)
 					}

@@ -33,7 +33,7 @@ export const syncApi = {
 
   // Update sync schedule for an instance
   updateSchedule: async (instanceId: string, data: UpdateScheduleRequest): Promise<void> => {
-    await apiClient.put(`/sync/schedules/${instanceId}`, data);
+    await apiClient.put(`/instances/${instanceId}/sync-schedules`, data);
   },
 
   // Update individual entity schedule
@@ -42,21 +42,21 @@ export const syncApi = {
     entityType: string, 
     data: Partial<EntitySchedule>
   ): Promise<void> => {
-    await apiClient.put(`/sync/schedules/${instanceId}/${entityType}`, data);
+    await apiClient.put(`/instances/${instanceId}/sync-schedules/${entityType}`, data);
   },
 
   // Trigger immediate sync
   triggerSync: async (instanceId: string, entityType: string): Promise<void> => {
-    await apiClient.post(`/sync/schedules/${instanceId}/${entityType}/trigger`);
+    await apiClient.post(`/instances/${instanceId}/sync-schedules/${entityType}/trigger`);
   },
 
   // Pause/resume instance sync
   pauseInstance: async (instanceId: string): Promise<void> => {
-    await apiClient.put(`/sync/schedules/${instanceId}/pause`);
+    await apiClient.put(`/instances/${instanceId}/sync-schedules/pause`);
   },
 
   resumeInstance: async (instanceId: string): Promise<void> => {
-    await apiClient.put(`/sync/schedules/${instanceId}/resume`);
+    await apiClient.put(`/instances/${instanceId}/sync-schedules/resume`);
   },
 
   // Global pause/resume

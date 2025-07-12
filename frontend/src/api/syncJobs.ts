@@ -77,6 +77,37 @@ export interface UpdateSyncConfigRequest {
 }
 
 // API functions
+
+// Get sync jobs for a specific instance
+export async function listSyncJobsForInstance(
+  instanceId: string,
+  params?: {
+    sync_type?: string;
+    status?: string;
+    limit?: number;
+    offset?: number;
+  }
+): Promise<SyncJobsResponse> {
+  const response = await apiClient.get(`/instances/${instanceId}/sync-jobs`, { params });
+  return response.data;
+}
+
+// Get a specific sync job by ID
+export async function getSyncJob(id: string): Promise<SyncJob> {
+  const response = await apiClient.get(`/sync-jobs/${id}`);
+  return response.data;
+}
+
+// Trigger sync for a specific instance
+export async function triggerSyncForInstance(
+  instanceId: string,
+  syncType: 'users' | 'safes' | 'groups'
+): Promise<{ message: string; job_id: string; job: SyncJob }> {
+  const response = await apiClient.post(`/instances/${instanceId}/sync-jobs/trigger`, { sync_type: syncType });
+  return response.data;
+}
+
+// Legacy functions for backward compatibility
 export async function listSyncJobs(params?: {
   instance_id?: string;
   sync_type?: string;
@@ -84,18 +115,17 @@ export async function listSyncJobs(params?: {
   limit?: number;
   offset?: number;
 }): Promise<SyncJobsResponse> {
-  const response = await apiClient.get('/sync-jobs', { params });
-  return response.data;
-}
-
-export async function getSyncJob(id: string): Promise<SyncJob> {
-  const response = await apiClient.get(`/sync-jobs/${id}`);
-  return response.data;
+  // If instance_id is provided, use the new instance-specific endpoint
+  if (params?.instance_id) {
+    const { instance_id, ...restParams } = params;
+    return listSyncJobsForInstance(instance_id, restParams);
+  }
+  // Otherwise, this would need a global endpoint which we don't have anymore
+  throw new Error('Global sync jobs listing is no longer supported. Please provide an instance_id.');
 }
 
 export async function triggerSync(data: TriggerSyncRequest): Promise<{ message: string; job_id: string; job: SyncJob }> {
-  const response = await apiClient.post('/sync-jobs/trigger', data);
-  return response.data;
+  return triggerSyncForInstance(data.instance_id, data.sync_type);
 }
 
 export async function getInstanceSyncConfigs(instanceId: string): Promise<InstanceSyncConfigsResponse> {

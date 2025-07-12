@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"net/http"
 	"os"
@@ -25,6 +26,22 @@ import (
 // Static files embedding is handled in embed.go and embed_dev.go
 
 func main() {
+	// Parse command line flags
+	var (
+		resetPassword = flag.String("reset-password", "", "Reset admin password (provide new password)")
+		username      = flag.String("username", "admin", "Username for password reset (default: admin)")
+	)
+	flag.Parse()
+
+	// Handle password reset mode
+	if *resetPassword != "" {
+		if err := handlePasswordReset(*username, *resetPassword); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Successfully reset password for user: %s\n", *username)
+		os.Exit(0)
+	}
 	// Load configuration
 	cfg, err := config.Load()
 	if err != nil {
@@ -202,23 +219,25 @@ func main() {
 			protected.DELETE("/certificate-authorities/:id", certAuthHandler.Delete)
 			protected.POST("/certificate-authorities/refresh", certAuthHandler.RefreshPool)
 			
-			// Sync schedules routes (deprecated - kept for compatibility)
+			// Global sync management routes (deprecated but kept for compatibility)
 			protected.GET("/sync/schedules", syncSchedulesHandler.GetSchedules)
-			protected.PUT("/sync/schedules/:instanceId", syncSchedulesHandler.UpdateSchedule)
-			protected.PUT("/sync/schedules/:instanceId/:entityType", syncSchedulesHandler.UpdateEntitySchedule)
-			protected.POST("/sync/schedules/:instanceId/:entityType/trigger", syncSchedulesHandler.TriggerSync)
-			protected.PUT("/sync/schedules/:instanceId/pause", syncSchedulesHandler.PauseInstance)
-			protected.PUT("/sync/schedules/:instanceId/resume", syncSchedulesHandler.ResumeInstance)
 			protected.POST("/sync/schedules/pause-all", syncSchedulesHandler.PauseAll)
 			protected.POST("/sync/schedules/resume-all", syncSchedulesHandler.ResumeAll)
 			
-			// Sync jobs routes (new architecture)
-			protected.GET("/sync-jobs", syncJobsHandler.ListSyncJobs)
+			// Instance-specific sync schedule routes (deprecated but moved to proper location)
+			protected.PUT("/instances/:instance_id/sync-schedules", syncSchedulesHandler.UpdateInstanceSchedule)
+			protected.PUT("/instances/:instance_id/sync-schedules/:entity_type", syncSchedulesHandler.UpdateInstanceEntitySchedule)
+			protected.POST("/instances/:instance_id/sync-schedules/:entity_type/trigger", syncSchedulesHandler.TriggerInstanceSync)
+			protected.PUT("/instances/:instance_id/sync-schedules/pause", syncSchedulesHandler.PauseInstance)
+			protected.PUT("/instances/:instance_id/sync-schedules/resume", syncSchedulesHandler.ResumeInstance)
+			
+			// Global sync job routes (for cross-instance views)
 			protected.GET("/sync-jobs/:id", syncJobsHandler.GetSyncJob)
-			protected.POST("/sync-jobs/trigger", syncJobsHandler.TriggerSync)
 			protected.GET("/sync-jobs/stream", syncJobsHandler.StreamSyncJobs)
 			
-			// Sync configuration routes
+			// Instance-specific sync routes
+			protected.GET("/instances/:instance_id/sync-jobs", syncJobsHandler.ListSyncJobsForInstance)
+			protected.POST("/instances/:instance_id/sync-jobs/trigger", syncJobsHandler.TriggerSyncForInstance)
 			protected.GET("/instances/:instance_id/sync-configs", syncJobsHandler.GetSyncConfigs)
 			protected.PATCH("/instances/:instance_id/sync-configs/:sync_type", syncJobsHandler.UpdateSyncConfig)
 			
@@ -307,4 +326,33 @@ func main() {
 	}
 
 	logrus.Info("Server exited")
+}
+
+// handlePasswordReset handles resetting a user's password
+func handlePasswordReset(username, newPassword string) error {
+	// Get database URL from environment
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL == "" {
+		return fmt.Errorf("DATABASE_URL environment variable not set")
+	}
+
+	// Connect to database
+	dbConfig := database.DatabaseConfig{
+		Driver: config.GetDatabaseDriver(),
+		DSN:    dbURL,
+	}
+
+	db, err := database.NewGormConnection(dbConfig)
+	if err != nil {
+		return fmt.Errorf("failed to connect to database: %w", err)
+	}
+	defer db.Close()
+
+	// Update the password
+	ctx := context.Background()
+	if err := db.UpdateUserPassword(ctx, username, newPassword); err != nil {
+		return fmt.Errorf("failed to update password: %w", err)
+	}
+
+	return nil
 }

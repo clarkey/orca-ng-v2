@@ -39,6 +39,13 @@ ORCA is an enterprise application that provides orchestration and management cap
 - **Multi-tenancy**: Support for multiple CyberArk environments
 - **Session Management**: Concurrent session support for CyberArk
 
+### Build Tags
+The project uses Go build tags to control compilation:
+- **`-tags dev`**: Development mode - skips embedding frontend files for faster builds
+- **No tags**: Production mode - embeds the frontend `dist` folder into the binary
+
+This is why development commands use `go run -tags dev` while production uses the pre-built binary.
+
 ### Current Implementation Status
 
 #### ✅ Completed
@@ -108,6 +115,48 @@ Password: admin123 (CHANGE THIS!)
 - Review and implement rate limiting
 - Enable audit logging for compliance
 
+### Admin Password Management
+
+The default admin credentials are:
+- Username: `admin`
+- Password: `admin123`
+
+**⚠️ IMPORTANT: Change this immediately after first deployment!**
+
+To reset the admin password:
+
+1. **Using the built-in password reset flag (recommended)**:
+   ```bash
+   # Development: uses -tags dev to skip frontend embedding
+   docker-compose exec backend sh -c "go run -tags dev ./cmd/orca --reset-password='your-new-password'"
+   
+   # Production: use the pre-built binary
+   docker-compose exec backend ./orca-server --reset-password='your-new-password'
+   ```
+
+2. **Using the CLI with local database access**:
+   ```bash
+   # Build the CLI first
+   docker-compose exec backend go build -o orca-cli cmd/orca-cli/main.go
+   
+   # Reset password with DATABASE_URL
+   docker-compose exec backend sh -c "DATABASE_URL='postgres://orca:orca@postgres:5432/orca?sslmode=disable' ./orca-cli user reset-password --username admin --local"
+   ```
+
+3. **Generate secure passwords**:
+   ```bash
+   # Build orca-keygen
+   docker-compose exec backend go build -o orca-keygen cmd/orca-keygen/main.go
+   
+   # Generate a secure password
+   docker-compose exec backend ./orca-keygen password
+   ```
+
+Note: `orca-keygen` generates secure random passwords and keys, not password hashes. It's useful for:
+- Generating secure admin passwords
+- Creating SESSION_SECRET and ENCRYPTION_KEY values
+- Producing all required security keys for production deployment
+
 ### Testing Strategy
 - Unit tests: `make test`
 - Integration tests: `make test-integration`
@@ -149,6 +198,17 @@ orca-cli login                     # Authenticate
 orca-cli status                    # Check connection
 orca-cli users list               # List users
 orca-cli config get               # View config
+
+# Admin Password Reset (built into main binary)
+# Note: -tags dev skips frontend embedding for faster execution in development
+docker-compose exec backend sh -c "go run -tags dev ./cmd/orca --reset-password='new-password'"
+docker-compose exec backend sh -c "go run -tags dev ./cmd/orca --reset-password='new-password' --username='john.doe'"
+
+# Generate secure passwords with orca-keygen
+docker-compose exec backend go build -o orca-keygen cmd/orca-keygen/main.go
+docker-compose exec backend ./orca-keygen password     # 16-char password
+docker-compose exec backend ./orca-keygen password 24  # 24-char password
+docker-compose exec backend ./orca-keygen all          # All production keys
 ```
 
 ### Code Style Guidelines
