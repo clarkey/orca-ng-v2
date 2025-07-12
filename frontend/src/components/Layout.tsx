@@ -134,8 +134,8 @@ export function Layout() {
       { name: 'Applications', href: '/applications', icon: Layers },
     ],
     operations: [
+      { name: 'Activity', href: '/activity', icon: Activity },
       { name: 'Operations Queue', href: '/operations', icon: ListTodo },
-      { name: 'Instance Sync', href: '/instance-sync', icon: RefreshCw },
       { name: 'Queue Monitoring', href: '/pipeline', icon: Activity },
     ],
     administration: [

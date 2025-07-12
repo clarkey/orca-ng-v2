@@ -25,17 +25,8 @@ type CyberArkInstance struct {
 	CreatedBy           string     `gorm:"size:30" json:"created_by"`
 	UpdatedBy           string     `gorm:"size:30" json:"updated_by"`
 	
-	// Sync configuration
-	SyncEnabled         bool       `gorm:"default:true" json:"sync_enabled"`
-	UserSyncInterval    *int       `gorm:"default:30" json:"user_sync_interval"`    // minutes
-	GroupSyncInterval   *int       `gorm:"default:60" json:"group_sync_interval"`   // minutes
-	SafeSyncInterval    *int       `gorm:"default:120" json:"safe_sync_interval"`   // minutes
-	UserSyncPageSize    *int       `gorm:"default:100" json:"user_sync_page_size"`  // pagination size
-	
-	// Sync status tracking
-	LastUserSyncAt      *time.Time `json:"last_user_sync_at,omitempty"`
-	LastUserSyncStatus  *string    `gorm:"size:20" json:"last_user_sync_status,omitempty"`
-	LastUserSyncError   *string    `gorm:"type:text" json:"last_user_sync_error,omitempty"`
+	// Note: All sync configuration has been moved to the instance_sync_configs table
+	// This provides per-sync-type configuration (users, safes, groups)
 	
 	// Relationships
 	Operations []Operation `gorm:"foreignKey:CyberArkInstanceID" json:"-"`

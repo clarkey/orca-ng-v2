@@ -127,11 +127,10 @@ func (h *UserSyncHandler) Handle(ctx context.Context, op *pipeline.Operation) er
 	}
 
 	// Determine page size
+	// Get page size from sync config or use default
 	pageSize := 100
 	if payload.PageSize != nil && *payload.PageSize > 0 {
 		pageSize = *payload.PageSize
-	} else if instance.UserSyncPageSize != nil && *instance.UserSyncPageSize > 0 {
-		pageSize = *instance.UserSyncPageSize
 	}
 
 	// Perform the sync

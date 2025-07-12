@@ -17,9 +17,10 @@ import (
 )
 
 type SyncSchedulesHandler struct {
-	db     *database.GormDB
-	logger *logrus.Logger
-	events *services.OperationEventService
+	db          *database.GormDB
+	logger      *logrus.Logger
+	events      *services.OperationEventService
+	syncService *services.SyncJobService
 }
 
 // EntitySchedule represents a sync schedule for a specific entity type
@@ -58,10 +59,14 @@ type UpdateEntityScheduleRequest struct {
 }
 
 func NewSyncSchedulesHandler(db *database.GormDB, logger *logrus.Logger, events *services.OperationEventService) *SyncSchedulesHandler {
+	// Create sync service if not injected (for backward compatibility)
+	syncService := services.NewSyncJobService(db, logger, events)
+	
 	return &SyncSchedulesHandler{
-		db:     db,
-		logger: logger,
-		events: events,
+		db:          db,
+		logger:      logger,
+		events:      events,
+		syncService: syncService,
 	}
 }
 
@@ -81,12 +86,20 @@ func (h *SyncSchedulesHandler) GetSchedules(c *gin.Context) {
 		// Get last sync operations for this instance
 		schedules := h.buildSchedulesForInstance(&instance)
 		
+		// Get user sync config for page size (if needed)
+		var userPageSize *int
+		if h.syncService != nil {
+			if config, err := h.syncService.GetSyncConfig(instance.ID, "users"); err == nil {
+				userPageSize = &config.PageSize
+			}
+		}
+		
 		response = append(response, SyncScheduleResponse{
 			InstanceID:       instance.ID,
 			InstanceName:     instance.Name,
-			Enabled:          instance.SyncEnabled,
+			Enabled:          true, // Always true since we control per sync type now
 			Schedules:        schedules,
-			UserSyncPageSize: instance.UserSyncPageSize,
+			UserSyncPageSize: userPageSize,
 		})
 	}
 
@@ -103,20 +116,16 @@ func (h *SyncSchedulesHandler) UpdateSchedule(c *gin.Context) {
 		return
 	}
 
-	// Update instance sync settings
-	updates := make(map[string]interface{})
-	if req.Enabled != nil {
-		updates["sync_enabled"] = *req.Enabled
-	}
-
-	if len(updates) > 0 {
-		if err := h.db.Model(&gormmodels.CyberArkInstance{}).
-			Where("id = ?", instanceID).
-			Updates(updates).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update schedule"})
-			return
+	// Update sync settings using sync service
+	if req.Enabled != nil && h.syncService != nil {
+		// Update all sync types
+		for _, syncType := range []string{"users", "safes", "groups"} {
+			h.syncService.UpdateSyncConfig(instanceID, syncType, map[string]interface{}{
+				"enabled": *req.Enabled,
+			})
 		}
 	}
+
 
 	c.JSON(http.StatusOK, gin.H{"message": "Schedule updated successfully"})
 }
@@ -133,37 +142,43 @@ func (h *SyncSchedulesHandler) UpdateEntitySchedule(c *gin.Context) {
 	}
 
 	// Validate entity type
-	validTypes := map[string]string{
-		"users":  "user_sync_interval",
-		"groups": "group_sync_interval",
-		"safes":  "safe_sync_interval",
+	validTypes := []string{"users", "groups", "safes"}
+	valid := false
+	for _, vt := range validTypes {
+		if entityType == vt {
+			valid = true
+			break
+		}
 	}
-	
-	intervalField, valid := validTypes[entityType]
 	if !valid {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid entity type"})
 		return
 	}
 
-	// Update the specific interval
-	updates := make(map[string]interface{})
-	if req.Interval != nil {
-		updates[intervalField] = *req.Interval
+	// Update the sync config
+	if h.syncService != nil {
+		updates := make(map[string]interface{})
+		if req.Interval != nil {
+			updates["interval_minutes"] = *req.Interval
+		}
+		if req.Enabled != nil {
+			updates["enabled"] = *req.Enabled
+		}
+		if len(updates) > 0 {
+			if err := h.syncService.UpdateSyncConfig(instanceID, entityType, updates); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update entity schedule"})
+				return
+			}
+		}
 	}
 	
 	// Update page size for user sync
-	if entityType == "users" && req.PageSize != nil {
-		updates["user_sync_page_size"] = *req.PageSize
+	if entityType == "users" && req.PageSize != nil && h.syncService != nil {
+		h.syncService.UpdateSyncConfig(instanceID, "users", map[string]interface{}{
+			"page_size": *req.PageSize,
+		})
 	}
 
-	if len(updates) > 0 {
-		if err := h.db.Model(&gormmodels.CyberArkInstance{}).
-			Where("id = ?", instanceID).
-			Updates(updates).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update entity schedule"})
-			return
-		}
-	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Entity schedule updated successfully"})
 }
@@ -233,11 +248,16 @@ func (h *SyncSchedulesHandler) TriggerSync(c *gin.Context) {
 func (h *SyncSchedulesHandler) PauseInstance(c *gin.Context) {
 	instanceID := c.Param("instanceId")
 	
-	if err := h.db.Model(&gormmodels.CyberArkInstance{}).
-		Where("id = ?", instanceID).
-		Update("sync_enabled", false).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to pause instance sync"})
-		return
+	// Pause all sync types for this instance
+	if h.syncService != nil {
+		for _, syncType := range []string{"users", "safes", "groups"} {
+			if err := h.syncService.UpdateSyncConfig(instanceID, syncType, map[string]interface{}{
+				"enabled": false,
+			}); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to pause instance sync"})
+				return
+			}
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Instance sync paused"})
@@ -247,11 +267,16 @@ func (h *SyncSchedulesHandler) PauseInstance(c *gin.Context) {
 func (h *SyncSchedulesHandler) ResumeInstance(c *gin.Context) {
 	instanceID := c.Param("instanceId")
 	
-	if err := h.db.Model(&gormmodels.CyberArkInstance{}).
-		Where("id = ?", instanceID).
-		Update("sync_enabled", true).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to resume instance sync"})
-		return
+	// Resume all sync types for this instance
+	if h.syncService != nil {
+		for _, syncType := range []string{"users", "safes", "groups"} {
+			if err := h.syncService.UpdateSyncConfig(instanceID, syncType, map[string]interface{}{
+				"enabled": true,
+			}); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to resume instance sync"})
+				return
+			}
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Instance sync resumed"})
@@ -259,11 +284,22 @@ func (h *SyncSchedulesHandler) ResumeInstance(c *gin.Context) {
 
 // PauseAll pauses all instance syncs
 func (h *SyncSchedulesHandler) PauseAll(c *gin.Context) {
-	if err := h.db.Model(&gormmodels.CyberArkInstance{}).
-		Where("sync_enabled = ?", true).
-		Update("sync_enabled", false).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to pause all syncs"})
+	// Get all instances
+	var instances []gormmodels.CyberArkInstance
+	if err := h.db.Find(&instances).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get instances"})
 		return
+	}
+	
+	// Pause all sync types for all instances
+	if h.syncService != nil {
+		for _, instance := range instances {
+			for _, syncType := range []string{"users", "safes", "groups"} {
+				h.syncService.UpdateSyncConfig(instance.ID, syncType, map[string]interface{}{
+					"enabled": false,
+				})
+			}
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "All syncs paused"})
@@ -271,11 +307,22 @@ func (h *SyncSchedulesHandler) PauseAll(c *gin.Context) {
 
 // ResumeAll resumes all instance syncs
 func (h *SyncSchedulesHandler) ResumeAll(c *gin.Context) {
-	if err := h.db.Model(&gormmodels.CyberArkInstance{}).
-		Where("sync_enabled = ?", false).
-		Update("sync_enabled", true).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to resume all syncs"})
+	// Get all instances
+	var instances []gormmodels.CyberArkInstance
+	if err := h.db.Find(&instances).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get instances"})
 		return
+	}
+	
+	// Resume all sync types for all instances
+	if h.syncService != nil {
+		for _, instance := range instances {
+			for _, syncType := range []string{"users", "safes", "groups"} {
+				h.syncService.UpdateSyncConfig(instance.ID, syncType, map[string]interface{}{
+					"enabled": true,
+				})
+			}
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "All syncs resumed"})
@@ -285,17 +332,16 @@ func (h *SyncSchedulesHandler) ResumeAll(c *gin.Context) {
 func (h *SyncSchedulesHandler) buildSchedulesForInstance(instance *gormmodels.CyberArkInstance) []EntitySchedule {
 	schedules := []EntitySchedule{}
 	
-	// Users schedule (with page size)
-	userSchedule := h.buildEntitySchedule(instance, "users", instance.UserSyncInterval)
-	userSchedule.PageSize = instance.UserSyncPageSize
+	// Users schedule
+	userSchedule := h.buildEntitySchedule(instance, "users", nil)
 	schedules = append(schedules, userSchedule)
 	
 	// Groups schedule
-	groupSchedule := h.buildEntitySchedule(instance, "groups", instance.GroupSyncInterval)
+	groupSchedule := h.buildEntitySchedule(instance, "groups", nil)
 	schedules = append(schedules, groupSchedule)
 	
 	// Safes schedule
-	safeSchedule := h.buildEntitySchedule(instance, "safes", instance.SafeSyncInterval)
+	safeSchedule := h.buildEntitySchedule(instance, "safes", nil)
 	schedules = append(schedules, safeSchedule)
 	
 	return schedules
@@ -305,12 +351,19 @@ func (h *SyncSchedulesHandler) buildSchedulesForInstance(instance *gormmodels.Cy
 func (h *SyncSchedulesHandler) buildEntitySchedule(instance *gormmodels.CyberArkInstance, entityType string, interval *int) EntitySchedule {
 	schedule := EntitySchedule{
 		EntityType: entityType,
-		Enabled:    interval != nil && *interval > 0,
-		Interval:   30, // Default
+		Enabled:    false,
+		Interval:   60, // Default
 	}
 	
-	if interval != nil {
-		schedule.Interval = *interval
+	// Get config from sync service if available
+	if h.syncService != nil {
+		if config, err := h.syncService.GetSyncConfig(instance.ID, entityType); err == nil {
+			schedule.Enabled = config.Enabled
+			schedule.Interval = config.IntervalMinutes
+			if entityType == "users" {
+				schedule.PageSize = &config.PageSize
+			}
+		}
 	}
 	
 	// Get last sync info from operations

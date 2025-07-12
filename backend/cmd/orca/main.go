@@ -114,6 +114,9 @@ func main() {
 	// Initialize operation event service
 	eventService := services.NewOperationEventService(logrus.StandardLogger())
 	
+	// Initialize sync job service
+	syncJobService := services.NewSyncJobService(db, logrus.StandardLogger(), eventService)
+	
 	// Initialize pipeline processor
 	pipelineConfig := &pipeline.PipelineConfig{
 		TotalCapacity:      1, // Process one operation at a time
@@ -144,6 +147,8 @@ func main() {
 	certAuthHandler := handlers.NewCertificateAuthoritiesHandler(db, logrus.StandardLogger(), certManager)
 	operationsHandler := handlers.NewOperationsHandler(db, logrus.StandardLogger(), eventService)
 	syncSchedulesHandler := handlers.NewSyncSchedulesHandler(db, logrus.StandardLogger(), eventService)
+	syncJobsHandler := handlers.NewSyncJobsHandler(db, logrus.StandardLogger(), syncJobService, eventService)
+	activityHandler := handlers.NewActivityHandler(db, logrus.StandardLogger(), eventService)
 
 	// API routes
 	api := router.Group("/api")
@@ -197,7 +202,7 @@ func main() {
 			protected.DELETE("/certificate-authorities/:id", certAuthHandler.Delete)
 			protected.POST("/certificate-authorities/refresh", certAuthHandler.RefreshPool)
 			
-			// Sync schedules routes
+			// Sync schedules routes (deprecated - kept for compatibility)
 			protected.GET("/sync/schedules", syncSchedulesHandler.GetSchedules)
 			protected.PUT("/sync/schedules/:instanceId", syncSchedulesHandler.UpdateSchedule)
 			protected.PUT("/sync/schedules/:instanceId/:entityType", syncSchedulesHandler.UpdateEntitySchedule)
@@ -206,6 +211,20 @@ func main() {
 			protected.PUT("/sync/schedules/:instanceId/resume", syncSchedulesHandler.ResumeInstance)
 			protected.POST("/sync/schedules/pause-all", syncSchedulesHandler.PauseAll)
 			protected.POST("/sync/schedules/resume-all", syncSchedulesHandler.ResumeAll)
+			
+			// Sync jobs routes (new architecture)
+			protected.GET("/sync-jobs", syncJobsHandler.ListSyncJobs)
+			protected.GET("/sync-jobs/:id", syncJobsHandler.GetSyncJob)
+			protected.POST("/sync-jobs/trigger", syncJobsHandler.TriggerSync)
+			protected.GET("/sync-jobs/stream", syncJobsHandler.StreamSyncJobs)
+			
+			// Sync configuration routes
+			protected.GET("/instances/:instance_id/sync-configs", syncJobsHandler.GetSyncConfigs)
+			protected.PATCH("/instances/:instance_id/sync-configs/:sync_type", syncJobsHandler.UpdateSyncConfig)
+			
+			// Activity routes (unified view)
+			protected.GET("/activity", activityHandler.ListActivity)
+			protected.GET("/activity/stream", activityHandler.StreamActivity)
 			
 			// Admin routes
 			admin := protected.Group("/admin")

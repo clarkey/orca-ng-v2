@@ -12,8 +12,9 @@ import (
 
 // OperationEvent represents an operation state change event
 type OperationEvent struct {
-	Type      string                 `json:"type"` // "created", "updated", "completed", "failed"
-	Operation *gormmodels.Operation  `json:"operation"`
+	Type      string                 `json:"type"` // "created", "updated", "completed", "failed", "sync_created", "sync_updated"
+	Operation *gormmodels.Operation  `json:"operation,omitempty"`
+	SyncJob   *gormmodels.SyncJob    `json:"sync_job,omitempty"`
 	Timestamp time.Time              `json:"timestamp"`
 }
 
@@ -101,11 +102,18 @@ func (s *OperationEventService) publish(event *OperationEvent) {
 	defer s.mu.RUnlock()
 
 	// Log the event
-	s.logger.WithFields(logrus.Fields{
-		"type":         event.Type,
-		"operation_id": event.Operation.ID,
-		"status":       event.Operation.Status,
-	}).Debug("Publishing operation event")
+	logFields := logrus.Fields{
+		"type": event.Type,
+	}
+	if event.Operation != nil {
+		logFields["operation_id"] = event.Operation.ID
+		logFields["status"] = event.Operation.Status
+	}
+	if event.SyncJob != nil {
+		logFields["sync_job_id"] = event.SyncJob.ID
+		logFields["sync_type"] = event.SyncJob.SyncType
+	}
+	s.logger.WithFields(logFields).Debug("Publishing event")
 
 	// Send to all subscribers
 	for clientID, ch := range s.subscribers {
@@ -133,4 +141,22 @@ func MarshalEventToJSON(event *OperationEvent) (string, error) {
 		return "", err
 	}
 	return string(data), nil
+}
+
+// PublishSyncJobCreated publishes a sync job created event
+func (s *OperationEventService) PublishSyncJobCreated(job *gormmodels.SyncJob) {
+	s.publish(&OperationEvent{
+		Type:      "sync_created",
+		SyncJob:   job,
+		Timestamp: time.Now(),
+	})
+}
+
+// PublishSyncJobUpdated publishes a sync job updated event
+func (s *OperationEventService) PublishSyncJobUpdated(job *gormmodels.SyncJob) {
+	s.publish(&OperationEvent{
+		Type:      "sync_updated",
+		SyncJob:   job,
+		Timestamp: time.Now(),
+	})
 }

@@ -33,7 +33,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { CyberArkInstanceForm } from '@/components/CyberArkInstanceForm';
 import { ConfirmationDialog } from '@/components/ui/confirmation-dialog';
-import { format } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 import {
   Plus,
   AlertCircle,
@@ -50,7 +50,13 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Check,
+  CheckCircle,
   X,
+  RefreshCw,
+  Users as UsersIcon,
+  Shield as ShieldIcon,
+  FileText,
+  MoreVertical,
 } from 'lucide-react';
 import { CyberArkInstance } from '@/api/cyberark';
 import { 
@@ -58,6 +64,18 @@ import {
   useDeleteCyberArkInstance, 
   useUpdateCyberArkInstance 
 } from '@/hooks/useCyberArkInstances';
+import { useInstanceSyncConfigs, useTriggerSync } from '@/hooks/useSyncJobs';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { InstanceSyncStatus } from '@/components/InstanceSyncStatus';
+import { InstanceSyncActions } from '@/components/InstanceSyncActions';
 
 const STORAGE_KEY_PAGE_SIZE = 'cyberark-instances-page-size';
 
@@ -163,10 +181,13 @@ export function Instances() {
         },
         size: 250,
         cell: ({ row }) => (
-          <div>
+          <button
+            onClick={() => handleEdit(row.original)}
+            className="text-left hover:underline focus:outline-none"
+          >
             <div className="font-medium">{row.original.name}</div>
             <div className="text-xs text-gray-500 font-mono">{row.original.id}</div>
-          </div>
+          </button>
         ),
       },
       {
@@ -198,8 +219,8 @@ export function Instances() {
       {
         id: 'status',
         accessorKey: 'last_test_success',
-        header: 'Status',
-        size: 150,
+        header: 'Connection',
+        size: 120,
         cell: ({ row }) => {
           const instance = row.original;
           if (!instance.last_test_at) {
@@ -254,6 +275,14 @@ export function Instances() {
             </Badge>
           );
         },
+      },
+      {
+        id: 'sync_status',
+        header: 'Sync Status',
+        size: 180,
+        cell: ({ row }) => (
+          <InstanceSyncStatus instanceId={row.original.id} />
+        ),
       },
       {
         id: 'last_test_at',
@@ -328,10 +357,33 @@ export function Instances() {
       {
         id: 'actions',
         header: '',
-        size: 40,
-        cell: () => (
-          <div className="flex justify-end">
-            <ChevronRight className="h-4 w-4 text-gray-400" />
+        size: 140,
+        cell: ({ row }) => (
+          <div className="flex justify-end gap-2">
+            <InstanceSyncActions 
+              instanceId={row.original.id} 
+              instanceName={row.original.name}
+              size="sm"
+            />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm">
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => handleEdit(row.original)}>
+                  Edit Instance
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem 
+                  onClick={() => handleDeleteRequest(row.original)}
+                  className="text-red-600"
+                >
+                  Delete Instance
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         ),
       },
@@ -371,8 +423,8 @@ export function Instances() {
   return (
     <PageContainer>
       <PageHeader
-        title="CyberArk Instances"
-        description="Manage your CyberArk PVWA instance configurations"
+        title="Instance Administration"
+        description="Manage CyberArk PVWA instances and their synchronization settings"
         actions={
           <Button onClick={() => setShowForm(true)}>
             <Plus className="h-4 w-4 mr-2" />
@@ -380,6 +432,54 @@ export function Instances() {
           </Button>
         }
       />
+
+      {/* Summary Stats */}
+      {instances.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          <Card className="px-6 py-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Total Instances</p>
+                <p className="text-2xl font-semibold">{instances.length}</p>
+              </div>
+              <Server className="h-8 w-8 text-gray-400" />
+            </div>
+          </Card>
+          <Card className="px-6 py-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Active</p>
+                <p className="text-2xl font-semibold">
+                  {instances.filter(i => i.is_active).length}
+                </p>
+              </div>
+              <CheckCircle className="h-8 w-8 text-green-500" />
+            </div>
+          </Card>
+          <Card className="px-6 py-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Connected</p>
+                <p className="text-2xl font-semibold">
+                  {instances.filter(i => i.last_test_success).length}
+                </p>
+              </div>
+              <Globe className="h-8 w-8 text-blue-500" />
+            </div>
+          </Card>
+          <Card className="px-6 py-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Sync Active</p>
+                <p className="text-2xl font-semibold">
+                  {instances.filter(i => i.is_active).length}
+                </p>
+              </div>
+              <RefreshCw className="h-8 w-8 text-purple-500" />
+            </div>
+          </Card>
+        </div>
+      )}
 
 
       {/* Data Table */}
@@ -396,10 +496,10 @@ export function Instances() {
             <div className="text-center py-16">
               <Server className="h-12 w-12 mx-auto mb-4 text-gray-400" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">
-                No CyberArk instances configured
+                No instances configured
               </h3>
               <p className="text-sm text-gray-500 mb-6">
-                Add your first CyberArk PVWA instance to get started
+                Add your first CyberArk PVWA instance to start synchronizing data
               </p>
               <Button onClick={() => setShowForm(true)}>
                 <Plus className="mr-2 h-4 w-4" />
@@ -430,8 +530,7 @@ export function Instances() {
                     table.getRowModel().rows.map((row) => (
                       <TableRow
                         key={row.id}
-                        className="cursor-pointer hover:bg-gray-50"
-                        onClick={() => handleEdit(row.original)}
+                        className="hover:bg-gray-50"
                       >
                         {row.getVisibleCells().map((cell) => (
                           <TableCell 

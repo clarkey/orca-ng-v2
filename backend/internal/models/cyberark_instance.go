@@ -32,7 +32,6 @@ type CreateCyberArkInstanceRequest struct {
 	Password string `json:"password" binding:"required"`
 	ConcurrentSessions *bool `json:"concurrent_sessions"`
 	SkipTLSVerify *bool `json:"skip_tls_verify"`
-	UserSyncPageSize *int `json:"user_sync_page_size" binding:"omitempty,min=1,max=1000"`
 }
 
 // UpdateCyberArkInstanceRequest represents the request to update an instance
@@ -44,7 +43,6 @@ type UpdateCyberArkInstanceRequest struct {
 	ConcurrentSessions *bool `json:"concurrent_sessions,omitempty"`
 	SkipTLSVerify *bool `json:"skip_tls_verify,omitempty"`
 	IsActive *bool  `json:"is_active,omitempty"`
-	UserSyncPageSize *int `json:"user_sync_page_size,omitempty" binding:"omitempty,min=1,max=1000"`
 }
 
 // TestConnectionRequest represents the request to test a CyberArk connection

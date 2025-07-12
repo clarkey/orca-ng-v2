@@ -8,7 +8,6 @@ export interface CyberArkInstance {
   concurrent_sessions: boolean;
   skip_tls_verify: boolean;
   is_active: boolean;
-  user_sync_page_size?: number;
   last_test_at?: string;
   last_test_success?: boolean;
   last_test_error?: string;
@@ -35,7 +34,6 @@ export interface UpdateCyberArkInstanceRequest {
   concurrent_sessions?: boolean;
   skip_tls_verify?: boolean;
   is_active?: boolean;
-  user_sync_page_size?: number;
 }
 
 export interface TestConnectionRequest {

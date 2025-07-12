@@ -65,7 +65,6 @@ func (h *CyberArkInstancesHandler) ListInstances(c *gin.Context) {
 			ConcurrentSessions: inst.ConcurrentSessions,
 			SkipTLSVerify:      inst.SkipTLSVerify,
 			IsActive:           inst.IsActive,
-			UserSyncPageSize:   inst.UserSyncPageSize,
 			LastTestAt:         inst.LastTestAt,
 			LastTestSuccess:    inst.LastTestSuccess,
 			LastTestError:      inst.LastTestError,
@@ -105,7 +104,6 @@ func (h *CyberArkInstancesHandler) GetInstance(c *gin.Context) {
 		ConcurrentSessions: instance.ConcurrentSessions,
 		SkipTLSVerify:      instance.SkipTLSVerify,
 		IsActive:           instance.IsActive,
-		UserSyncPageSize:   instance.UserSyncPageSize,
 		LastTestAt:         instance.LastTestAt,
 		LastTestSuccess:    instance.LastTestSuccess,
 		LastTestError:      instance.LastTestError,
@@ -194,9 +192,6 @@ func (h *CyberArkInstancesHandler) CreateInstance(c *gin.Context) {
 	if req.SkipTLSVerify != nil {
 		instance.SkipTLSVerify = *req.SkipTLSVerify
 	}
-	if req.UserSyncPageSize != nil {
-		instance.UserSyncPageSize = req.UserSyncPageSize
-	}
 
 	// Create with user context
 	ctx := context.WithValue(c.Request.Context(), "user_id", user.ID)
@@ -229,7 +224,6 @@ func (h *CyberArkInstancesHandler) CreateInstance(c *gin.Context) {
 		ConcurrentSessions: instance.ConcurrentSessions,
 		SkipTLSVerify:      instance.SkipTLSVerify,
 		IsActive:           instance.IsActive,
-		UserSyncPageSize:   instance.UserSyncPageSize,
 		LastTestAt:         instance.LastTestAt,
 		LastTestSuccess:    instance.LastTestSuccess,
 		LastTestError:      instance.LastTestError,
@@ -325,10 +319,6 @@ func (h *CyberArkInstancesHandler) UpdateInstance(c *gin.Context) {
 	
 	if req.IsActive != nil {
 		updates["is_active"] = *req.IsActive
-	}
-	
-	if req.UserSyncPageSize != nil {
-		updates["user_sync_page_size"] = *req.UserSyncPageSize
 	}
 
 	// If connection details changed, test the new connection

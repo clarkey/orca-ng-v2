@@ -18,6 +18,7 @@ import {
   getOperationTypeLabel
 } from '../api/operations';
 import { useOperations, useCancelOperation } from '@/hooks/useOperations';
+import { useOperationsStream } from '@/hooks/useSSE';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { PageContainer } from '../components/PageContainer';
@@ -111,6 +112,9 @@ export default function OperationsTable() {
   // Fetch operations using React Query with next page prefetching
   const { data: response, isLoading, refetch, isFetching } = useOperations(queryParams, { prefetchNext: true });
   const cancelMutation = useCancelOperation();
+  
+  // Enable real-time updates via SSE
+  useOperationsStream();
   
   // Use real data from the API
   const data = response?.operations || [];

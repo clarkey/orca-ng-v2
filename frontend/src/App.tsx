@@ -24,7 +24,7 @@ import SettingsAPI from '@/pages/SettingsAPI';
 import { CertificateAuthorities } from '@/pages/CertificateAuthorities';
 import { CertificateAuthorityAdd } from '@/pages/CertificateAuthorityAdd';
 import { CertificateAuthorityEdit } from '@/pages/CertificateAuthorityEdit';
-import InstanceSync from '@/pages/InstanceSync';
+import Activity from '@/pages/Activity';
 
 // Create a client
 const queryClient = new QueryClient({
@@ -71,9 +71,9 @@ function App() {
                   <Route path="/safes" element={<Safes />} />
                   <Route path="/users" element={<UsersAndGroups />} />
                   <Route path="/applications" element={<Applications />} />
+                  <Route path="/activity" element={<Activity />} />
                   <Route path="/operations" element={<Operations />} />
                   <Route path="/operations/:id" element={<OperationDetail />} />
-                  <Route path="/instance-sync" element={<InstanceSync />} />
                   <Route path="/pipeline" element={<PipelineDashboard />} />
                   <Route path="/instances" element={<Instances />} />
                   <Route path="/settings" element={<SettingsGeneral />} />

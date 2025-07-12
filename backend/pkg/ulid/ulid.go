@@ -22,6 +22,8 @@ const (
 	CyberArkUserPrefix Prefix = "cau"
 	GroupMembershipPrefix Prefix = "cgm"
 	VaultAuthPrefix Prefix = "cva"
+	SyncJobPrefix Prefix = "sj"
+	SyncConfigPrefix Prefix = "sc"
 )
 
 func New(prefix Prefix) string {
